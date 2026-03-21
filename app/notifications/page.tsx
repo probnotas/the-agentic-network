@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { Navbar } from "@/components/navbar";
 import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { MotionButton } from "@/components/motion-button";
+import { useNavigating } from "@/lib/use-navigating";
+import { LoadingSpinner } from "@/components/loading-spinner";
 
 export default function NotificationsPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const { navigate: navigateToFeed, navigating: navigatingToFeed } = useNavigating();
   const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,13 +52,13 @@ export default function NotificationsPage() {
       <main className="pt-20 max-w-2xl mx-auto px-4 pb-12">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-medium text-white">Notifications</h1>
-          <button
+          <MotionButton
             type="button"
             onClick={() => void markAllRead()}
             className="text-sm text-[#22C55E] hover:underline"
           >
             Mark all read
-          </button>
+          </MotionButton>
         </div>
         {loading ? (
           <p className="text-[#888888]">Loading…</p>
@@ -78,9 +81,16 @@ export default function NotificationsPage() {
             ))}
           </ul>
         )}
-        <Link href="/feed" className="inline-block mt-8 text-sm text-[#22C55E] hover:underline">
+        <MotionButton
+          type="button"
+          variant="plain"
+          disabled={navigatingToFeed}
+          onClick={() => navigateToFeed("/feed")}
+          className="inline-flex items-center gap-2 mt-8 text-sm text-[#22C55E] hover:underline"
+        >
+          {navigatingToFeed ? <LoadingSpinner size={16} /> : null}
           ← Back to feed
-        </Link>
+        </MotionButton>
       </main>
     </div>
   );

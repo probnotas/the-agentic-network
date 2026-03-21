@@ -2,11 +2,20 @@
 
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Search, Bell, Mail, Menu, Loader2, Plus } from "lucide-react";
-import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase/client";
+import {
+  NAVBAR_AVATAR_UPDATE_EVENT,
+  type NavbarAvatarUpdateDetail,
+} from "@/lib/navbar-avatar-events";
+import { CreateCommunityModal } from "@/components/create-community-modal";
+import { MotionButton } from "@/components/motion-button";
+import { useNavigating } from "@/lib/use-navigating";
+import { LoadingSpinner } from "@/components/loading-spinner";
 
 interface SearchResult {
   resultType: "user" | "post";
@@ -20,30 +29,118 @@ interface SearchResult {
 
 export function Navbar() {
   const router = useRouter();
+  const { navigate: navigateFromSearch, navigating: searchResultNavigating } = useNavigating();
+  const { navigate: navigateViewProfile, navigating: viewProfileNavigating } = useNavigating();
   const { user, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  /** Resolved profile link: real profile path, or `/onboarding` if row missing (never `/profile/me` 404). */
-  const [profileHref, setProfileHref] = useState<string>("/auth");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [showCreateCommunity, setShowCreateCommunity] = useState(false);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const [navAvatarUrl, setNavAvatarUrl] = useState<string | null>(null);
+  /** Loaded from `profiles` after login; used for `/profile/[username]`. */
+  const [navUsername, setNavUsername] = useState<string | null>(null);
+  /** True while fetching profile row for navbar (don’t navigate to a broken URL). */
+  const [navProfileLoading, setNavProfileLoading] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     if (!user) {
-      setProfileHref("/auth");
+      setNavAvatarUrl(null);
+      setNavUsername(null);
+      setNavProfileLoading(false);
       return;
     }
-    setProfileHref("/onboarding");
-    void supabase
-      .from("profiles")
-      .select("username")
-      .eq("id", user.id)
-      .maybeSingle()
-      .then(({ data }: { data: { username: string } | null }) => {
-        if (data?.username) setProfileHref(`/profile/${data.username}`);
-        else setProfileHref("/onboarding");
-      });
+    setNavProfileLoading(true);
+    setNavAvatarUrl(null);
+    setNavUsername(null);
+    void (async () => {
+      try {
+        const { data: profileData, error } = await supabase
+          .from("profiles")
+          .select("username,avatar_url")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        console.log("[Navbar] Profile data from query:", profileData, "error:", error);
+
+        if (error) {
+          console.error("Navbar profile fetch:", error);
+          setNavAvatarUrl(null);
+          setNavUsername(null);
+          return;
+        }
+
+        if (profileData?.username) {
+          const u = String(profileData.username).trim();
+          if (u.length) {
+            setNavUsername(u);
+            setNavAvatarUrl(profileData.avatar_url ?? null);
+            console.log("[Navbar] Set nav username from DB:", u);
+          } else {
+            console.error("[Navbar] Profile row has empty username for user:", user.id);
+            setNavUsername(null);
+            setNavAvatarUrl(profileData.avatar_url ?? null);
+          }
+        } else {
+          console.error("[Navbar] No profile found for user:", user.id);
+          setNavUsername(null);
+          setNavAvatarUrl(null);
+        }
+      } finally {
+        setNavProfileLoading(false);
+      }
+    })();
   }, [user, supabase]);
+
+  useEffect(() => {
+    if (!user) return;
+    console.log("[Navbar] Nav username:", navUsername, "| Nav user id:", user.id);
+    if (navUsername) {
+      console.log("[Navbar] Would navigate to:", "/profile/" + encodeURIComponent(navUsername));
+    }
+  }, [user, navUsername]);
+
+  const handleViewProfile = useCallback(async () => {
+    if (!user) return;
+    setProfileMenuOpen(false);
+    setMobileMenuOpen(false);
+
+    console.log("[Navbar] View Profile click — navUsername:", navUsername, "| user.id:", user.id);
+
+    if (navUsername && navUsername.trim()) {
+      const path = "/profile/" + encodeURIComponent(navUsername.trim());
+      console.log("[Navbar] Navigating to:", path);
+      navigateViewProfile(path);
+      return;
+    }
+
+    const { data, error } = await supabase.from("profiles").select("username").eq("id", user.id).maybeSingle();
+    console.log("[Navbar] View Profile re-fetch username:", data, "error:", error);
+
+    if (data?.username) {
+      const u = String(data.username).trim();
+      if (u.length) {
+        setNavUsername(u);
+        navigateViewProfile("/profile/" + encodeURIComponent(u));
+        return;
+      }
+    }
+
+    console.error("[Navbar] No username in profiles; redirecting to onboarding");
+    router.push("/onboarding");
+  }, [user, navUsername, supabase, navigateViewProfile, router]);
+
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const d = (ev as CustomEvent<NavbarAvatarUpdateDetail>).detail;
+      if (d && "avatar_url" in d) setNavAvatarUrl(d.avatar_url);
+    };
+    window.addEventListener(NAVBAR_AVATAR_UPDATE_EVENT, handler);
+    return () => window.removeEventListener(NAVBAR_AVATAR_UPDATE_EVENT, handler);
+  }, []);
 
   const fetchUnreadMessageCount = useCallback(async () => {
     if (!user) return;
@@ -95,6 +192,17 @@ export function Navbar() {
     document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, [notificationsOpen]);
+
+  useEffect(() => {
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (!profileMenuRef.current) return;
+      if (profileMenuOpen && !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [profileMenuOpen]);
 
   const fetchUnreadCount = async () => {
     if (!user) return;
@@ -176,7 +284,7 @@ export function Navbar() {
     
     const timeout = setTimeout(async () => {
       const q = searchQuery.trim();
-      const [{ data: users }, { data: posts }, { data: tagPosts }] = await Promise.all([
+      const [{ data: users }, { data: posts }] = await Promise.all([
         supabase
           .from("profiles")
           .select("id,username,display_name,account_type")
@@ -185,17 +293,12 @@ export function Navbar() {
         supabase
           .from("posts")
           .select("id,title,post_type")
-          .or(`title.ilike.%${q}%,body.ilike.%${q}%`)
+          .or(`title.ilike.%${q}%,tags.cs.{${q}},tags.cs.{${q.toLowerCase()}},tags.cs.{${q.toUpperCase()}}`)
           .limit(6),
-        supabase.from("posts").select("id,title,post_type").contains("tags", [q]).limit(6),
       ]);
-      const postMap = new Map<string, any>();
-      for (const p of [...(posts ?? []), ...(tagPosts ?? [])]) {
-        postMap.set(p.id, p);
-      }
       setSearchResults([
         ...((users ?? []).map((u: any) => ({ ...u, resultType: "user" as const }))),
-        ...Array.from(postMap.values()).map((p: any) => ({ ...p, resultType: "post" as const })),
+        ...((posts ?? []).map((p: any) => ({ ...p, resultType: "post" as const }))),
       ]);
       setSearching(false);
     }, 200);
@@ -206,30 +309,26 @@ export function Navbar() {
   const handleResultClick = (result: SearchResult) => {
     setShowResults(false);
     setSearchQuery("");
-    
+
     if (result.resultType === "user") {
-      router.push(`/profile/${result.username}`);
+      navigateFromSearch(`/profile/${result.username}`);
     } else {
-      router.push(`/post/${result.id}`);
+      navigateFromSearch(`/post/${result.id}`);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && searchQuery.length >= 2) {
-      router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
+      navigateFromSearch(`/search?q=${encodeURIComponent(searchQuery)}`);
       setShowResults(false);
     }
   };
 
   return (
-    <nav className="fixed top-0 left-0 right-0 h-16 bg-[#141414]/95 backdrop-blur-sm border-b border-[#27272A] z-50">
+    <nav className="fixed top-0 left-0 right-0 h-16 glass border-b border-white/10 z-50">
       <div className="h-full max-w-7xl mx-auto px-4 flex items-center justify-between gap-4">
-        {/* Logo - Always "The Agentic Network" in VT323 */}
-        <Link 
-          href="/feed" 
-          className="flex-shrink-0"
-          style={{ fontFamily: "VT323, monospace", color: "#22C55E", fontSize: "1.5rem" }}
-        >
+        {/* Brand — text only (VT323 green) */}
+        <Link href="/feed" className="flex-shrink-0 font-pixel tracking-wider text-[#22C55E] text-2xl">
           The Agentic Network
         </Link>
 
@@ -247,10 +346,16 @@ export function Navbar() {
               onFocus={() => setShowResults(true)}
               onKeyDown={handleKeyDown}
               placeholder="Search posts, users, tags..."
-              className="w-full bg-[#0A0A0A] border border-[#27272A] pl-10 pr-4 py-2 rounded-lg focus:outline-none focus:border-[#22C55E] focus:shadow-[0_0_0_2px_rgba(34,197,94,0.2)] focus:max-w-2xl transition-all text-white text-sm"
+              className="w-full bg-[#0A0A0A] border border-[rgba(255,255,255,0.1)] pl-10 pr-4 py-2 rounded-md focus:outline-none focus:border-[rgba(255,255,255,0.3)] transition-colors text-white text-sm"
             />
-            {searching && (
-              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA] animate-spin" />
+            {(searching || searchResultNavigating) && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center">
+                {searchResultNavigating ? (
+                  <LoadingSpinner size={16} />
+                ) : (
+                  <Loader2 className="w-4 h-4 text-[#A1A1AA] animate-spin" />
+                )}
+              </span>
             )}
           </div>
 
@@ -269,10 +374,12 @@ export function Navbar() {
                     </div>
                   )}
                   {searchResults.filter(r => r.resultType === "user").map((result) => (
-                    <button
+                    <MotionButton
                       key={`user-${result.id}`}
+                      variant="plain"
+                      disabled={searchResultNavigating}
                       onClick={() => handleResultClick(result)}
-                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-[#27272A] transition-colors text-left"
+                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-[#27272A] transition-colors text-left rounded-none"
                     >
                       <div className="w-8 h-8 rounded-full bg-[#0A0A0A] flex items-center justify-center text-xs">
                         {result.display_name?.[0] || result.username?.[0]}
@@ -288,7 +395,7 @@ export function Navbar() {
                       }`}>
                         {result.account_type === "human" ? "Human" : "AI Agent"}
                       </span>
-                    </button>
+                    </MotionButton>
                   ))}
                   
                   {searchResults.filter(r => r.resultType === "post").length > 0 && (
@@ -297,14 +404,16 @@ export function Navbar() {
                     </div>
                   )}
                   {searchResults.filter(r => r.resultType === "post").map((result) => (
-                    <button
+                    <MotionButton
                       key={`post-${result.id}`}
+                      variant="plain"
+                      disabled={searchResultNavigating}
                       onClick={() => handleResultClick(result)}
-                      className="w-full px-4 py-3 hover:bg-[#27272A] transition-colors text-left"
+                      className="w-full px-4 py-3 hover:bg-[#27272A] transition-colors text-left rounded-none"
                     >
                       <p className="text-sm text-white line-clamp-1">{result.title}</p>
                       <p className="text-xs text-[#A1A1AA]">{result.post_type}</p>
-                    </button>
+                    </MotionButton>
                   ))}
                   
                   <div className="px-4 py-2 border-t border-[#27272A]">
@@ -320,12 +429,44 @@ export function Navbar() {
 
         {/* Right Side */}
         <div className="flex items-center gap-2">
-          <Link href="/feed?create=1" className="relative p-2 hover:bg-[#1C1C1A] rounded-lg transition-colors flex items-center gap-1 border border-[#27272A]">
-            <Plus className="w-4 h-4 text-[#22C55E]" />
-            <span className="text-xs text-[#A1A1AA]">Create</span>
-          </Link>
+          <div className="relative">
+            <MotionButton
+              type="button"
+              variant="plain"
+              onClick={() => setCreateOpen((v) => !v)}
+              className="relative p-2 rounded-full transition-colors flex items-center gap-1 glass-pill shimmer-on-hover"
+            >
+              <Plus className="w-4 h-4 text-[#22C55E]" />
+              <span className="text-xs text-[#A1A1AA]">Create</span>
+            </MotionButton>
+            {createOpen && (
+              <div
+                className="absolute right-0 mt-2 w-44 rounded-lg overflow-hidden z-50"
+                style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)" }}
+              >
+                <Link
+                  href="/feed?create=1"
+                  className="block px-3 py-2 text-sm text-white hover:bg-[rgba(255,255,255,0.05)]"
+                  onClick={() => setCreateOpen(false)}
+                >
+                  Create Post
+                </Link>
+                <button
+                  type="button"
+                  className="w-full text-left px-3 py-2 text-sm text-white hover:bg-[rgba(255,255,255,0.05)]"
+                  onClick={() => {
+                    setCreateOpen(false);
+                    setShowCreateCommunity(true);
+                  }}
+                >
+                  Create Community
+                </button>
+              </div>
+            )}
+          </div>
           <div className="relative" ref={notificationsRef}>
-            <button
+            <MotionButton
+              variant="plain"
               className="relative p-2 hover:bg-[#1C1C1A] rounded-lg transition-colors"
               onClick={() => {
                 setNotificationsOpen((v) => !v);
@@ -340,7 +481,7 @@ export function Navbar() {
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
-            </button>
+            </MotionButton>
 
             {notificationsOpen && (
               <div className="absolute right-0 mt-2 w-[360px] max-w-[90vw] bg-[#1C1C1A] border border-[#27272A] rounded-lg shadow-xl overflow-hidden z-50">
@@ -403,22 +544,100 @@ export function Navbar() {
             )}
           </Link>
 
-          <Link
-            href={profileHref}
-            className={cn(
-              "w-8 h-8 bg-[#1C1C1A] flex items-center justify-center text-sm rounded-lg hover:bg-[#27272A] transition-colors border border-[#27272A]",
-              user && "ring-2 ring-[#00FF88]/40 ring-offset-2 ring-offset-[#141414]"
-            )}
-          >
-            {user?.email?.[0].toUpperCase() || "U"}
-          </Link>
+          {user ? (
+            <div className="relative" ref={profileMenuRef}>
+              <button
+                type="button"
+                aria-expanded={profileMenuOpen}
+                aria-haspopup="menu"
+                onClick={() => setProfileMenuOpen((v) => !v)}
+                className={cn(
+                  "h-9 w-9 shrink-0 overflow-hidden bg-[#1C1C1A] flex items-center justify-center text-sm rounded-full hover:bg-[#27272A] transition-colors border border-[#27272A]",
+                  "ring-2 ring-[#00FF88]/40 ring-offset-2 ring-offset-[#141414]"
+                )}
+              >
+                {navAvatarUrl ? (
+                  <Image
+                    src={navAvatarUrl}
+                    alt=""
+                    width={36}
+                    height={36}
+                    unoptimized
+                    className="h-9 w-9 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="text-sm font-medium text-white">{user.email?.[0]?.toUpperCase() ?? "U"}</span>
+                )}
+              </button>
+              {profileMenuOpen && (
+                <div
+                  className="absolute right-0 mt-2 z-[60] min-w-[200px] overflow-hidden rounded-[12px] py-1"
+                  style={{
+                    background: "#0a0a0a",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+                  }}
+                  role="menu"
+                >
+                  {navProfileLoading ? (
+                    <div
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-[#888888] cursor-wait"
+                      style={{ fontFamily: "Inter, system-ui, sans-serif" }}
+                    >
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      Loading profile…
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={viewProfileNavigating}
+                      className="block w-full text-left px-4 py-2.5 text-sm text-white hover:bg-[rgba(255,255,255,0.05)] bg-transparent border-0 disabled:opacity-60 inline-flex items-center gap-2"
+                      style={{ fontFamily: "Inter, system-ui, sans-serif" }}
+                      onClick={() => void handleViewProfile()}
+                    >
+                      {viewProfileNavigating ? <LoadingSpinner size={16} /> : null}
+                      {viewProfileNavigating ? "Loading…" : "View Profile"}
+                    </button>
+                  )}
+                  <Link
+                    href="/settings"
+                    className="block px-4 py-2.5 text-sm text-white hover:bg-[rgba(255,255,255,0.05)]"
+                    style={{ fontFamily: "Inter, system-ui, sans-serif" }}
+                    onClick={() => setProfileMenuOpen(false)}
+                  >
+                    Settings
+                  </Link>
+                  <div className="my-1 h-px bg-white/10 mx-2" />
+                  <button
+                    type="button"
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-[rgba(255,255,255,0.05)] text-red-500"
+                    style={{ fontFamily: "Inter, system-ui, sans-serif" }}
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      void signOut().then(() => router.push("/"));
+                    }}
+                  >
+                    Log Out
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <Link
+              href="/auth"
+              className="w-8 h-8 bg-[#1C1C1A] flex items-center justify-center text-sm rounded-lg hover:bg-[#27272A] transition-colors border border-[#27272A]"
+            >
+              U
+            </Link>
+          )}
 
-          <button
+          <MotionButton
+            variant="plain"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="lg:hidden p-2 hover:bg-[#1C1C1A] rounded-lg transition-colors"
           >
             <Menu className="w-5 h-5" />
-          </button>
+          </MotionButton>
         </div>
       </div>
 
@@ -431,19 +650,33 @@ export function Navbar() {
             <Link href="/feed?type=news_discussion" className="block py-2 hover:text-[#22C55E] transition-colors">News</Link>
             <Link href="/explore" className="block py-2 hover:text-[#22C55E] transition-colors">Explore</Link>
             <Link href="/messages" className="block py-2 hover:text-[#22C55E] transition-colors">Messages</Link>
-            <Link href={profileHref} className="block py-2 hover:text-[#22C55E] transition-colors">Profile</Link>
+            {user && navProfileLoading ? (
+              <span className="block py-2 text-[#666]">Profile…</span>
+            ) : user ? (
+              <button
+                type="button"
+                disabled={viewProfileNavigating}
+                className="block w-full text-left py-2 hover:text-[#22C55E] transition-colors text-white disabled:opacity-50 bg-transparent border-0"
+                onClick={() => void handleViewProfile()}
+              >
+                {viewProfileNavigating ? "Opening…" : "Profile"}
+              </button>
+            ) : null}
+            <Link href="/settings" className="block py-2 hover:text-[#22C55E] transition-colors">Settings</Link>
             <Link href="/notifications" className="block py-2 hover:text-[#22C55E] transition-colors">Notifications</Link>
             {user && (
-              <button 
+              <MotionButton
+                variant="plain"
                 onClick={() => signOut()}
-                className="block py-2 text-red-400 hover:text-red-300 transition-colors"
+                className="block py-2 text-red-400 hover:text-red-300 transition-colors w-full text-left"
               >
                 Sign Out
-              </button>
+              </MotionButton>
             )}
           </div>
         </div>
       )}
+      <CreateCommunityModal isOpen={showCreateCommunity} onClose={() => setShowCreateCommunity(false)} />
     </nav>
   );
 }

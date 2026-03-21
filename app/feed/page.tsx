@@ -1,7 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Navbar } from "@/components/navbar";
 import { LeftSidebar } from "@/components/left-sidebar";
@@ -13,6 +13,9 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchFeedPosts, fetchProfilesByIds, toggleLike, upsertRating } from "@/lib/network";
 import { useAuth } from "@/components/auth-provider";
 import { tierFromNetworkRank } from "@/lib/tier";
+import { PostCardV3 } from "@/components/post-card-v3";
+import Image from "next/image";
+import { MotionButton } from "@/components/motion-button";
 
 function FeedPageContent() {
   const search = useSearchParams();
@@ -23,33 +26,110 @@ function FeedPageContent() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
   const [ratedPosts, setRatedPosts] = useState<Record<string, number>>({});
-  const [leaders, setLeaders] = useState<any[]>([]);
+  const [topAgents, setTopAgents] = useState<any[]>([]);
+  const [topHumans, setTopHumans] = useState<any[]>([]);
   const [communities, setCommunities] = useState<any[]>([]);
+  const [feedHasMore, setFeedHasMore] = useState(true);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [feedLoadingMore, setFeedLoadingMore] = useState(false);
+
+  const feedOffsetRef = useRef(0);
+  const sidebarLoadedRef = useRef(false);
+  const filterKey = search.toString();
+
+  const readFeedFilters = useCallback((): {
+    sort: "new" | "popular";
+    type?: string;
+    tag?: string;
+    communityId?: string;
+  } => {
+    const sort: "new" | "popular" = search.get("sort") === "popular" ? "popular" : "new";
+    const type = search.get("type") || undefined;
+    const tag = search.get("tag") || undefined;
+    const communityId = search.get("community") || undefined;
+    return { sort, type, tag, communityId };
+  }, [search]);
 
   useEffect(() => {
+    if (sidebarLoadedRef.current) return;
+    sidebarLoadedRef.current = true;
+    void (async () => {
+      const [{ data: agents }, { data: humans }, { data: commRows }] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id,username,display_name,account_type,network_rank,avatar_url")
+          .eq("account_type", "agent")
+          .order("network_rank", { ascending: false })
+          .limit(5),
+        supabase
+          .from("profiles")
+          .select("id,username,display_name,account_type,network_rank,avatar_url")
+          .eq("account_type", "human")
+          .order("network_rank", { ascending: false })
+          .limit(5),
+        supabase.from("communities").select("id,name,member_count").order("member_count", { ascending: false }).limit(5),
+      ]);
+      setTopAgents(agents ?? []);
+      setTopHumans(humans ?? []);
+      setCommunities(commRows ?? []);
+    })();
+  }, [supabase]);
+
+  useEffect(() => {
+    let cancelled = false;
     const load = async () => {
-      const sort = search.get("sort") === "popular" ? "popular" : "new";
-      const type = search.get("type") || undefined;
-      const tag = search.get("tag") || undefined;
-      const communityId = search.get("community") || undefined;
-      const { data } = await fetchFeedPosts({ sort, type, tag, communityId });
+      setFeedLoading(true);
+      feedOffsetRef.current = 0;
+      const { sort, type, tag, communityId } = readFeedFilters();
+      const { data } = await fetchFeedPosts({ sort, type, tag, communityId, offset: 0, limit: 20 });
+      if (cancelled) return;
       const postRows = data ?? [];
       setPosts(postRows);
+      feedOffsetRef.current = postRows.length;
+      setFeedHasMore(postRows.length >= 20);
       const ids = Array.from(new Set<string>(postRows.map((p: any) => p.author_id)));
       const { data: pRows } = await fetchProfilesByIds(ids);
+      if (cancelled) return;
       setProfiles(new Map((pRows ?? []).map((p: any) => [p.id, p])));
-      const { data: top } = await supabase.from("profiles").select("id,username,display_name,account_type,network_rank").order("network_rank", { ascending: false }).limit(18);
-      setLeaders(top ?? []);
-      const { data: commRows } = await supabase
-        .from("communities")
-        .select("id,name,member_count")
-        .order("member_count", { ascending: false })
-        .limit(5);
-      setCommunities(commRows ?? []);
       if (search.get("create") === "1") setShowShareModal(true);
+      setFeedLoading(false);
     };
     void load();
-  }, [search, supabase]);
+    return () => {
+      cancelled = true;
+    };
+  }, [filterKey, supabase, readFeedFilters, search]);
+
+  const loadMoreFeed = async () => {
+    if (feedLoadingMore || !feedHasMore || feedLoading) return;
+    setFeedLoadingMore(true);
+    try {
+      const { sort, type, tag, communityId } = readFeedFilters();
+      const { data } = await fetchFeedPosts({
+        sort,
+        type,
+        tag,
+        communityId,
+        offset: feedOffsetRef.current,
+        limit: 20,
+      });
+      const rows = data ?? [];
+      feedOffsetRef.current += rows.length;
+      setFeedHasMore(rows.length >= 20);
+      setPosts((prev) => [...prev, ...rows]);
+      if (rows.length) {
+        const authorIds = Array.from(new Set(rows.map((p: { author_id: string }) => p.author_id)));
+        const { data: pRows } = await fetchProfilesByIds(authorIds as string[]);
+        setProfiles((prev) => {
+          const m = new Map(prev);
+          for (const p of pRows ?? []) m.set((p as any).id, p);
+          return m;
+        });
+      }
+    } finally {
+      setFeedLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     if (!user || posts.length === 0) {
@@ -118,128 +198,60 @@ function FeedPageContent() {
   };
 
   const handleNewPost = (newPost: any) => {
-    setPosts([newPost, ...posts]);
+    setPosts((prev) => [newPost, ...prev]);
   };
 
   return (
-    <div className="min-h-screen bg-[#141414]">
+    <div
+      className="min-h-screen"
+      style={{
+        background: "linear-gradient(180deg, #0a1a0a 0%, #0d1a0d 15%, #091509 40%, #080808 70%, #080808 100%)",
+      }}
+    >
       <Navbar />
       <LeftSidebar />
 
-      <main className="lg:ml-64 pt-20 pb-12 px-4">
+      <main
+        className="lg:ml-64 pt-20 pb-12 px-4 min-h-screen"
+        style={{
+          background: "linear-gradient(180deg, #0a1a0a 0%, #0d1a0d 15%, #091509 40%, #080808 70%, #080808 100%)",
+        }}
+      >
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[65%_35%] gap-4">
           <div className="space-y-4">
+            {feedLoading && posts.length === 0 ? (
+              <p className="text-sm text-[#888888]">Loading posts…</p>
+            ) : null}
             {posts.map((post) => {
-              const author = profiles.get(post.author_id);
+              const author = profiles.get(post.author_id) as any;
               const isLiked = likedPosts.has(post.id);
               const userRating = ratedPosts[post.id] || 0;
 
+              if (!author) return null;
+
               return (
-                <div key={post.id} className="bg-[#1C1C1A] border border-white/[0.06] rounded-xl p-4 transition-all duration-200 ease-linear hover:-translate-y-0.5 hover:border-white/[0.12] hover:bg-[#1a1a1a]">
-                  {/* Author */}
-                  <div className="flex items-center gap-3 mb-3">
-                    <Link 
-                      href={`/profile/${author?.username ?? ""}`}
-                      className="w-10 h-10 bg-[#0A0A0A] rounded-full flex items-center justify-center hover:opacity-80 transition-opacity"
-                    >
-                      {author?.display_name?.[0] || "U"}
-                    </Link>
-                    <div className="flex-1">
-                      <Link 
-                        href={`/profile/${author?.username ?? ""}`}
-                        className="font-medium hover:text-[#22C55E] transition-colors"
-                      >
-                        {author?.display_name}
-                      </Link>
-                      <div className="flex items-center gap-2 text-xs text-[#A1A1AA]">
-                        <span className={cn(
-                          "px-2 py-0.5 rounded",
-                          author?.account_type === "human" ? "bg-[#3B82F6]/20 text-[#60A5FA]" : "bg-[#22C55E]/20 text-[#4ADE80]"
-                        )}>
-                          {author?.account_type === "human" ? "Human" : "AI Agent"}
-                        </span>
-                        <span>•</span>
-                        <span>{new Date(post.created_at).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-                    <Link 
-                      href={`/post/${post.id}`}
-                      className="p-2 hover:bg-[#27272A] rounded-lg transition-colors"
-                    >
-                      <MoreVertical className="w-5 h-5 text-[#A1A1AA]" />
-                    </Link>
-                  </div>
-
-                  {/* Content */}
-                  <Link href={`/post/${post.id}`}>
-                    <h3 className="text-lg font-semibold mb-2 hover:text-[#22C55E] transition-colors">{post.title}</h3>
-                    <p className="text-[#A1A1AA] mb-3 line-clamp-3">{post.body}</p>
-                  </Link>
-
-                  {/* Tags */}
-                  {post.tags && post.tags.length > 0 && (
-                    <div className="flex gap-2 mb-3 flex-wrap">
-                      {post.tags.map((tag: string) => (
-                        <Link
-                          key={tag}
-                          href={`/feed?tag=${encodeURIComponent(tag)}`}
-                          className="text-xs text-[#00FF88] bg-[#00FF88]/10 px-2 py-1 rounded hover:bg-[#00FF88]/20"
-                        >
-                          #{tag}
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-4 pt-3 border-t border-[#27272A]">
-                    <button
-                      onClick={() => handleLike(post.id)}
-                      className={cn(
-                        "flex items-center gap-1 transition-colors",
-                        isLiked ? "text-red-500" : "text-[#A1A1AA] hover:text-[#00FF88] hover:scale-110"
-                      )}
-                    >
-                      <Heart className={cn("w-5 h-5", isLiked && "fill-current")} />
-                      <span className="text-sm">{post.like_count}</span>
-                    </button>
-
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <button
-                          key={star}
-                          onClick={() => handleRate(post.id, star)}
-                          className={cn(
-                            "transition-colors",
-                            star <= userRating ? "text-yellow-500" : "text-[#4B5563] hover:text-yellow-500"
-                          )}
-                        >
-                          <Star className={cn("w-5 h-5", star <= userRating && "fill-current")} />
-                        </button>
-                      ))}
-                    </div>
-
-                    <Link 
-                      href={`/post/${post.id}`}
-                      className="flex items-center gap-1 text-[#A1A1AA] hover:text-[#4A9EFF] transition-colors"
-                    >
-                      <MessageSquare className="w-5 h-5" />
-                      <span className="text-sm">{post.comment_count}</span>
-                    </Link>
-
-                    <button
-                      onClick={() => handleShare(post.id)}
-                      className="flex items-center gap-1 text-[#A1A1AA] hover:text-white transition-colors ml-auto"
-                    >
-                      <Share2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
+                <PostCardV3
+                  key={post.id}
+                  post={post as any}
+                  author={author as any}
+                  initialIsLiked={isLiked}
+                  initialUserRating={userRating}
+                />
               );
             })}
+            {feedHasMore ? (
+              <MotionButton
+                type="button"
+                disabled={feedLoadingMore || feedLoading}
+                onClick={() => void loadMoreFeed()}
+                className="w-full py-3 rounded-lg border border-white/15 text-sm text-white hover:bg-white/5"
+              >
+                {feedLoadingMore ? "Loading…" : "Load more"}
+              </MotionButton>
+            ) : null}
           </div>
-          <aside className="space-y-4">
-            <div className="bg-[#1C1C1A] border border-white/[0.06] rounded-xl p-4 transition-transform duration-200 hover:-translate-y-0.5">
+          <aside className="space-y-4 mr-6 ml-2">
+            <div className="glass-soft rounded-xl p-4 glass-hover shimmer-on-hover max-w-[calc(100%-16px)] rounded-[12px]">
               <h3 className="mb-2 font-pixel text-[#00FF88]">Top Communities</h3>
               {communities.length === 0 ? (
                 <p className="text-sm text-[#888888]">No communities yet.</p>
@@ -270,15 +282,25 @@ function FeedPageContent() {
                 </ul>
               )}
             </div>
-            <div className="bg-[#1C1C1A] border border-white/[0.06] rounded-xl p-4 transition-transform duration-200 hover:-translate-y-0.5">
+            <div className="glass-soft rounded-xl p-4 glass-hover shimmer-on-hover max-w-[calc(100%-16px)] rounded-[12px]">
               <h3 className="mb-2 font-pixel text-[#00FF88]">Top Agents</h3>
-              {leaders.filter((x) => x.account_type === "agent").slice(0, 5).map((x) => (
+              {topAgents.length === 0 ? (
+                <p className="text-sm text-[#888888]">No agents yet.</p>
+              ) : topAgents.map((x) => (
                 <div key={x.id} className="flex items-center justify-between py-1 text-sm gap-2">
-                  <Link href={`/profile/${x.username}`} className="text-white hover:text-[#00FF88] truncate">
+                  <Link href={`/profile/${x.username}`} className="text-white hover:text-[#00FF88] truncate flex items-center gap-2">
+                    {x.avatar_url ? (
+                      <Image src={x.avatar_url} alt={`${x.display_name} avatar`} width={24} height={24} unoptimized className="w-6 h-6 rounded-full object-cover" />
+                    ) : (
+                      <span className="w-6 h-6 rounded-full bg-[#0A0A0A] border border-white/10 flex items-center justify-center text-[11px]">
+                        {x.display_name?.[0] ?? "A"}
+                      </span>
+                    )}
                     {x.display_name}
                   </Link>
                   <span className="text-[#888888] text-xs shrink-0">{tierFromNetworkRank(x.network_rank)}</span>
-                  <button
+                  {user?.id !== x.id ? (
+                  <MotionButton
                     type="button"
                     className="shrink-0 px-2 py-0.5 text-xs border border-white/10 rounded hover:border-[#00FF88]/50"
                     onClick={async () => {
@@ -288,19 +310,30 @@ function FeedPageContent() {
                     }}
                   >
                     Follow
-                  </button>
+                  </MotionButton>
+                  ) : null}
                 </div>
               ))}
             </div>
-            <div className="bg-[#1C1C1A] border border-white/[0.06] rounded-xl p-4 transition-transform duration-200 hover:-translate-y-0.5">
+            <div className="glass-soft rounded-xl p-4 glass-hover shimmer-on-hover max-w-[calc(100%-16px)] rounded-[12px]">
               <h3 className="mb-2 font-pixel text-[#00FF88]">Top Humans</h3>
-              {leaders.filter((x) => x.account_type === "human").slice(0, 5).map((x) => (
+              {topHumans.length === 0 ? (
+                <p className="text-sm text-[#888888]">No humans yet.</p>
+              ) : topHumans.map((x) => (
                 <div key={x.id} className="flex items-center justify-between py-1 text-sm gap-2">
-                  <Link href={`/profile/${x.username}`} className="text-white hover:text-[#4A9EFF] truncate">
+                  <Link href={`/profile/${x.username}`} className="text-white hover:text-[#4A9EFF] truncate flex items-center gap-2">
+                    {x.avatar_url ? (
+                      <Image src={x.avatar_url} alt={`${x.display_name} avatar`} width={24} height={24} unoptimized className="w-6 h-6 rounded-full object-cover" />
+                    ) : (
+                      <span className="w-6 h-6 rounded-full bg-[#0A0A0A] border border-white/10 flex items-center justify-center text-[11px]">
+                        {x.display_name?.[0] ?? "H"}
+                      </span>
+                    )}
                     {x.display_name}
                   </Link>
                   <span className="text-[#888888] text-xs shrink-0">{tierFromNetworkRank(x.network_rank)}</span>
-                  <button
+                  {user?.id !== x.id ? (
+                  <MotionButton
                     type="button"
                     className="shrink-0 px-2 py-0.5 text-xs border border-white/10 rounded hover:border-[#4A9EFF]/50"
                     onClick={async () => {
@@ -310,7 +343,8 @@ function FeedPageContent() {
                     }}
                   >
                     Follow
-                  </button>
+                  </MotionButton>
+                  ) : null}
                 </div>
               ))}
             </div>

@@ -35,11 +35,19 @@ export async function fetchFeedPosts(params?: {
   type?: string;
   tag?: string;
   communityId?: string;
+  /** Zero-based row offset for pagination */
+  offset?: number;
+  /** Page size (default 20) */
+  limit?: number;
 }) {
   const supabase = createClient();
+  const pageSize = Math.min(Math.max(params?.limit ?? 20, 1), 50);
+  const offset = Math.max(params?.offset ?? 0, 0);
+  const end = offset + pageSize - 1;
+
   let query = supabase
     .from("posts")
-    .select("id,author_id,title,body,post_type,tags,community_id,created_at,like_count,comment_count,rating_avg,score")
+    .select("id,author_id,title,body,post_type,tags,community_id,cover_image_url,created_at,like_count,comment_count,rating_avg,score")
     .eq("is_public", true);
 
   if (params?.type) query = query.eq("post_type", params.type);
@@ -48,7 +56,7 @@ export async function fetchFeedPosts(params?: {
   if (params?.sort === "popular") query = query.order("score", { ascending: false });
   else query = query.order("created_at", { ascending: false });
 
-  return query.limit(100);
+  return query.range(offset, end);
 }
 
 export async function fetchProfilesByIds(ids: string[]) {

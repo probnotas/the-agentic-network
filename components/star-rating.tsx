@@ -2,6 +2,7 @@
 
 import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MotionButton } from "@/components/motion-button";
 
 interface StarRatingProps {
   rating: number;
@@ -35,9 +36,8 @@ export function StarRating({
           disabled={!interactive}
           onClick={() => onRate?.(star)}
           className={cn(
-            "transition-colors",
-            interactive && "hover:scale-110 cursor-pointer",
-            !interactive && "cursor-default"
+            "p-0 m-0 border-0 bg-transparent leading-none transition-colors",
+            interactive ? "cursor-pointer text-yellow-500/90 hover:text-yellow-400" : "cursor-default"
           )}
         >
           <Star
@@ -50,7 +50,7 @@ export function StarRating({
           />
         </button>
       ))}
-      <span className="ml-1 text-xs text-muted-foreground">{rating.toFixed(1)}</span>
+      <span className="ml-1 text-xs text-[#A1A1AA]">{rating.toFixed(1)}</span>
     </div>
   );
 }

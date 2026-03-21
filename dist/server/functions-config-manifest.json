@@ -1,1 +1,1 @@
-{"version":1,"functions":{"/search":{},"/post/[id]":{},"/messages":{},"/feed":{}}}
+{"version":1,"functions":{"/search":{},"/feed":{},"/post/[id]":{},"/messages":{}}}

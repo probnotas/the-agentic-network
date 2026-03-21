@@ -10,10 +10,14 @@ import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase/client";
 import { createComment, toggleLike, upsertRating } from "@/lib/network";
 import { cn } from "@/lib/utils";
+import { MotionButton } from "@/components/motion-button";
+import { useNavigating } from "@/lib/use-navigating";
+import { LoadingSpinner } from "@/components/loading-spinner";
 
 export default function PostPage() {
   const params = useParams();
   const router = useRouter();
+  const { navigate: navigateToFeed, navigating: navigatingToFeed } = useNavigating();
   const { user } = useAuth();
   const supabase = useMemo(() => createClient(), []);
   const [post, setPost] = useState<any>(undefined);
@@ -38,7 +42,12 @@ export default function PostPage() {
       setPost(p);
       const [{ data: a }, { data: commentRows }] = await Promise.all([
         supabase.from("profiles").select("id,username,display_name,account_type").eq("id", p.author_id).maybeSingle(),
-        supabase.from("comments").select("id,author_id,content,created_at").eq("post_id", postId).order("created_at", { ascending: false }),
+        supabase
+          .from("comments")
+          .select("id,author_id,content,created_at")
+          .eq("post_id", postId)
+          .order("created_at", { ascending: false })
+          .limit(200),
       ]);
       setAuthor(a);
       const ids = Array.from(new Set<string>((commentRows ?? []).map((c: any) => c.author_id)));
@@ -108,7 +117,14 @@ export default function PostPage() {
         <Navbar />
         <div className="pt-24 text-center text-[#A1A1AA]">
           <p>Post not found.</p>
-          <button onClick={() => router.push("/feed")} className="mt-4 px-4 py-2 bg-[#1C1C1A] border border-[#27272A] rounded-lg">Back to feed</button>
+          <MotionButton
+            onClick={() => navigateToFeed("/feed")}
+            disabled={navigatingToFeed}
+            className="mt-4 inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#1C1C1A] border border-[#27272A] rounded-lg"
+          >
+            {navigatingToFeed ? <LoadingSpinner size={16} /> : null}
+            {navigatingToFeed ? "Loading…" : "Back to feed"}
+          </MotionButton>
         </div>
       </div>
     );
@@ -118,9 +134,9 @@ export default function PostPage() {
     <div className="min-h-screen bg-[#141414]">
       <Navbar />
       <main className="pt-20 pb-10 max-w-3xl mx-auto px-4">
-        <button onClick={() => router.back()} className="flex items-center gap-2 text-[#A1A1AA] hover:text-white mb-4">
+        <MotionButton onClick={() => router.back()} className="flex items-center gap-2 text-[#A1A1AA] hover:text-white mb-4">
           <ArrowLeft className="w-4 h-4" /> Back
-        </button>
+        </MotionButton>
         <div className="bg-[#1C1C1A] border border-[#27272A] rounded-xl p-6">
           <div className="mb-3">
             <Link href={`/profile/${author?.username || ""}`} className="text-sm text-[#A1A1AA] hover:text-white">{author?.display_name || "Unknown"} @{author?.username || "unknown"}</Link>
@@ -131,17 +147,17 @@ export default function PostPage() {
             {(post.tags ?? []).map((tag: string) => <span key={tag} className="text-xs px-2 py-1 bg-[#22C55E]/10 text-[#22C55E] rounded">#{tag}</span>)}
           </div>
           <div className="flex items-center gap-5 pt-4 border-t border-[#27272A]">
-            <button onClick={handleLike} className={cn("flex items-center gap-2", liked ? "text-red-500" : "text-[#A1A1AA] hover:text-[#00FF88]")}><Heart className={cn("w-5 h-5", liked && "fill-current")} />{post.like_count}</button>
-            <div className="flex items-center gap-1">{[1,2,3,4,5].map((s)=><button key={s} onClick={()=>handleRate(s)} className={cn(s<=userRating?"text-yellow-500":"text-[#4B5563] hover:text-yellow-500")}><Star className={cn("w-5 h-5", s<=userRating && "fill-current")} /></button>)}</div>
+            <MotionButton onClick={handleLike} className={cn("flex items-center gap-2", liked ? "text-red-500" : "text-[#A1A1AA] hover:text-[#00FF88]")}><Heart className={cn("w-5 h-5", liked && "fill-current")} />{post.like_count}</MotionButton>
+            <div className="flex items-center gap-1">{[1,2,3,4,5].map((s)=><MotionButton key={s} onClick={()=>handleRate(s)} className={cn(s<=userRating?"text-yellow-500":"text-[#4B5563] hover:text-yellow-500")}><Star className={cn("w-5 h-5", s<=userRating && "fill-current")} /></MotionButton>)}</div>
             <span className="flex items-center gap-2 text-[#A1A1AA]"><MessageSquare className="w-5 h-5" />{comments.length}</span>
-            <button onClick={() => navigator.clipboard.writeText(window.location.href)} className="ml-auto text-[#A1A1AA] hover:text-white"><Share2 className="w-5 h-5" /></button>
+            <MotionButton onClick={() => navigator.clipboard.writeText(window.location.href)} className="ml-auto text-[#A1A1AA] hover:text-white"><Share2 className="w-5 h-5" /></MotionButton>
           </div>
         </div>
         <div className="mt-4 bg-[#1C1C1A] border border-[#27272A] rounded-xl p-6">
           <h2 className="text-lg mb-4">Comments</h2>
           <form onSubmit={handleComment} className="flex gap-2 mb-4">
             <input value={newComment} onChange={(e)=>setNewComment(e.target.value)} placeholder="Add a comment..." className="flex-1 bg-[#0A0A0A] border border-[#27272A] rounded-lg px-3 py-2" />
-            <button type="submit" className="px-3 py-2 bg-[#22C55E] text-black rounded-lg disabled:opacity-40" disabled={!newComment.trim()}><Send className="w-4 h-4" /></button>
+            <MotionButton type="submit" className="px-3 py-2 bg-[#22C55E] text-black rounded-lg disabled:opacity-40" disabled={!newComment.trim()}><Send className="w-4 h-4" /></MotionButton>
           </form>
           <div className="space-y-3">
             {comments.map((c) => (

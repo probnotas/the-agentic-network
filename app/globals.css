@@ -28,6 +28,144 @@ body {
   color: var(--foreground);
 }
 
+.logo-transparent {
+  mix-blend-mode: screen;
+  filter: brightness(1.25) contrast(1.1);
+}
+
+.logo-img {
+  mix-blend-mode: screen;
+  filter: brightness(2);
+  background: transparent !important;
+}
+
+.hero-logo-img {
+  filter: brightness(100) saturate(0);
+  mix-blend-mode: overlay;
+}
+
+.glass {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: rgba(15, 15, 15, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.glass-soft {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(15, 15, 15, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-pill {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.25);
+}
+
+.glass-pill:hover {
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  filter: brightness(1.12);
+}
+
+.btn-pill {
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  border-radius: 9999px;
+  background: rgba(0, 255, 136, 0.08);
+  color: #00FF88;
+  padding: 8px 20px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: all 200ms ease;
+}
+
+.btn-pill:hover {
+  border-color: rgba(0, 255, 136, 0.8);
+  background: rgba(0, 255, 136, 0.15);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
+}
+
+.btn-pill-secondary {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  background: transparent;
+}
+
+/* Mock post cards on landing are static (no entrance / hover motion). */
+.mock-post-card {
+  opacity: 1;
+  transform: none;
+}
+
+/* Landing mock dashboard: zero blur, glow, motion, will-change (scroll performance). */
+.mock-dashboard-section .mock-feed-card,
+.mock-dashboard-section .mock-post-card {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  transition: none !important;
+  transform: none !important;
+  will-change: auto !important;
+  animation: none !important;
+}
+
+/* Appearance: disable pixel font globally when root has data attribute */
+html[data-pixel-font="off"] .font-pixel,
+html[data-pixel-font="off"] .logo-text,
+html[data-pixel-font="off"] .tan-logo,
+html[data-pixel-font="off"] .pixel-heading,
+html[data-pixel-font="off"] .stat-number {
+  font-family: 'Inter', system-ui, sans-serif !important;
+  font-weight: 500 !important;
+}
+
+/* Feed density (applied to main feed column via class on body) */
+body.feed-density-compact main .space-y-4 > * {
+  margin-bottom: 0.5rem;
+}
+body.feed-density-spacious main .space-y-4 > * {
+  margin-bottom: 1.25rem;
+}
+
+.glass-hover {
+  transition: transform 220ms ease, background-color 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.glass-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.shimmer-on-hover {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer-on-hover::before {
+  content: "";
+  position: absolute;
+  inset: -120% -30%;
+  background: linear-gradient(120deg, transparent 35%, rgba(255, 255, 255, 0.08) 50%, transparent 65%);
+  transform: translateX(-40%);
+  opacity: 0;
+  transition: opacity 220ms ease, transform 420ms ease;
+}
+
+.shimmer-on-hover:hover::before {
+  opacity: 1;
+  transform: translateX(40%);
+}
+
+.hero-parallax {
+  background-attachment: scroll;
+  background-position: center;
+  background-size: cover;
+}
+
 /* Pixel font is opt-in only for logo/headers/stat numbers. */
 .font-pixel, .logo-text, .tan-logo, .pixel-heading, .stat-number {
   font-family: 'VT323', monospace !important;
@@ -169,13 +307,29 @@ button:active {
 
 /* === MESSAGE BUBBLES === */
 .message-bubble-sent {
-  background: linear-gradient(135deg, #22C55E 0%, #16A34A 100%);
-  border-radius: 18px 18px 4px 18px;
+  background: rgba(0, 255, 136, 0.15);
+  border: 1px solid rgba(0, 255, 136, 0.35);
+  border-radius: 9999px;
+  backdrop-filter: blur(10px);
 }
 
 .message-bubble-received {
-  background: #27272A;
-  border-radius: 18px 18px 18px 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9999px;
+  backdrop-filter: blur(10px);
+}
+
+.messages-animated-bg {
+  background: linear-gradient(120deg, #0a0a0a, #0d1a0d, #0a0a0a);
+  background-size: 200% 200%;
+  animation: messagesBg 30s ease infinite;
+}
+
+@keyframes messagesBg {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 /* === TIER COLORS === */

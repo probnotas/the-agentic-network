@@ -6,22 +6,30 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Navbar } from "@/components/navbar";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/components/auth-provider";
+import { PostCardV3 } from "@/components/post-card-v3";
+import { fetchProfilesByIds } from "@/lib/network";
 
 function SearchPageContent() {
   const params = useSearchParams();
   const q = (params.get("q") || "").trim();
+  const { user } = useAuth();
   const supabase = useMemo(() => createClient(), []);
   const [users, setUsers] = useState<any[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
+  const [profilesById, setProfilesById] = useState<Map<string, any>>(new Map());
+  const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
+  const [ratedPosts, setRatedPosts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const load = async () => {
       if (!q) {
         setUsers([]);
         setPosts([]);
+        setProfilesById(new Map());
         return;
       }
-      const [{ data: userRows }, { data: textPosts }, { data: tagPosts }] = await Promise.all([
+      const [{ data: userRows }, { data: textPosts }] = await Promise.all([
         supabase
           .from("profiles")
           .select("id,username,display_name,account_type")
@@ -29,20 +37,58 @@ function SearchPageContent() {
           .limit(20),
         supabase
           .from("posts")
-          .select("id,title,body,tags,post_type")
-          .or(`title.ilike.%${q}%,body.ilike.%${q}%`)
+          .select(
+            "id,author_id,title,body,tags,post_type,cover_image_url,created_at,like_count,comment_count,rating_avg"
+          )
+          .or(`title.ilike.%${q}%,tags.cs.{${q}},tags.cs.{${q.toLowerCase()}},tags.cs.{${q.toUpperCase()}}`)
           .limit(30),
-        supabase.from("posts").select("id,title,body,tags,post_type").contains("tags", [q]).limit(30),
       ]);
       setUsers(userRows ?? []);
-      const merged = new Map<string, any>();
-      for (const p of [...(textPosts ?? []), ...(tagPosts ?? [])]) {
-        merged.set(p.id, p);
-      }
-      setPosts(Array.from(merged.values()));
+      const postRows = textPosts ?? [];
+      setPosts(postRows);
+
+      // Load authors for PostCardV3.
+      const authorIds = Array.from(new Set(postRows.map((p: any) => p.author_id).filter(Boolean)));
+      const { data: authorProfiles } = authorIds.length
+        ? await supabase
+            .from("profiles")
+            .select("id,username,display_name,account_type,bio,avatar_url")
+            .in("id", authorIds)
+        : { data: [] };
+      setProfilesById(new Map((authorProfiles ?? []).map((p: any) => [p.id, p])));
     };
     void load();
   }, [q, supabase]);
+
+  useEffect(() => {
+    if (!user || posts.length === 0) {
+      setLikedPosts(new Set());
+      setRatedPosts({});
+      return;
+    }
+
+    const ids = posts.map((p) => p.id);
+
+    void supabase
+      .from("likes")
+      .select("post_id")
+      .eq("user_id", user.id)
+      .in("post_id", ids)
+      .then(({ data }: { data: { post_id: string }[] | null }) => {
+        setLikedPosts(new Set((data ?? []).map((r) => r.post_id)));
+      });
+
+    void supabase
+      .from("ratings")
+      .select("post_id,stars")
+      .eq("user_id", user.id)
+      .in("post_id", ids)
+      .then(({ data }: { data: { post_id: string; stars: number }[] | null }) => {
+        const next: Record<string, number> = {};
+        for (const r of data ?? []) next[r.post_id] = r.stars;
+        setRatedPosts(next);
+      });
+  }, [user, posts, supabase]);
 
   return (
     <div className="min-h-screen bg-[#141414]">
@@ -62,13 +108,20 @@ function SearchPageContent() {
           </section>
           <section>
             <h2 className="text-lg mb-2">Posts</h2>
-            <div className="space-y-2">
-              {posts.map((p) => (
-                <Link key={p.id} href={`/post/${p.id}`} className="block bg-[#1C1C1A] border border-[#27272A] rounded-lg p-3">
-                  <p>{p.title}</p>
-                  <p className="text-sm text-[#A1A1AA] line-clamp-2">{p.body}</p>
-                </Link>
-              ))}
+            <div className="space-y-3">
+              {posts.map((p) => {
+                const author = profilesById.get(p.author_id);
+                if (!author) return null;
+                return (
+                  <PostCardV3
+                    key={p.id}
+                    post={p}
+                    author={author}
+                    initialIsLiked={likedPosts.has(p.id)}
+                    initialUserRating={ratedPosts[p.id] || 0}
+                  />
+                );
+              })}
             </div>
           </section>
         </div>

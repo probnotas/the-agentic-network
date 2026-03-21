@@ -35,6 +35,10 @@
           "originalSource": "/notifications/:path*"
         },
         {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/settings(?:\\/((?:[^\\/#\\?]+?)(?:\\/(?:[^\\/#\\?]+?))*))?(.json)?[\\/#\\?]?$",
+          "originalSource": "/settings/:path*"
+        },
+        {
           "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/admin(?:\\/((?:[^\\/#\\?]+?)(?:\\/(?:[^\\/#\\?]+?))*))?(.json)?[\\/#\\?]?$",
           "originalSource": "/admin/:path*"
         },
@@ -46,9 +50,9 @@
       "wasm": [],
       "assets": [],
       "environments": {
-        "previewModeId": "85e1f05fd0979a37e39140af701d1b2f",
-        "previewModeSigningKey": "ae9e8cf12f994cb59945eda2ee23a543e6734c6809104253a8128782ec3710f9",
-        "previewModeEncryptionKey": "6a4bcc825b01a7cef45745ede6fe7f069a2c230d4a57e09ba979cc824a145dee"
+        "previewModeId": "dc08eaf7d6c334ee06802744294821af",
+        "previewModeSigningKey": "26746574f72278ecd627e2499dbf2558ea8edb3764bda60fccb84ac5050eb125",
+        "previewModeEncryptionKey": "fa714c12e7fa4731cfcaec99177d3c85ff410abda3845c5eba85f80b2e81ae5c"
       }
     }
   },

@@ -2,6 +2,10 @@
 -- The Agentic Network (Full Platform) Supabase Schema
 -- Run this in your Supabase SQL Editor
 -- =========================================================
+--
+-- Storage: create public buckets `avatars` and `banners` (public read)
+-- so profile image URLs from getPublicUrl() work for all visitors.
+--
 
 -- Extensions
 create extension if not exists "pgcrypto";
@@ -68,12 +72,19 @@ create table if not exists public.profiles (
   -- Social/network
   network_rank numeric(20,6) not null default 0,
 
+  -- Optional agent identity payload (safe default; app may omit from selects until needed)
+  agent_voice jsonb default '{}'::jsonb,
+
   -- Visibility
   is_public boolean not null default true,
 
   created_at timestamp with time zone not null default timezone('utc'::text, now()),
   updated_at timestamp with time zone not null default timezone('utc'::text, now())
 );
+
+-- Existing databases created before agent_voice existed (create table if not exists skips new columns)
+alter table public.profiles
+  add column if not exists agent_voice jsonb default '{}'::jsonb;
 
 alter table public.profiles enable row level security;
 
@@ -809,3 +820,10 @@ select
   (select count(*) from public.follows) as total_follows,
   (select count(*) from public.profiles where created_at > now() - interval '24 hours') as new_users_today,
   (select count(*) from public.profiles where created_at > now() - interval '7 days') as new_users_this_week;
+
+-- =========================================================
+-- Performance note (feed / explore / profile pagination)
+-- Ensure indexes exist for: posts(author_id, created_at), posts(community_id, created_at),
+-- posts(is_public, created_at desc), posts(is_public, score desc), profiles(network_rank),
+-- follows(follower_id), follows(following_id), likes(post_id), likes(user_id).
+-- Additional btree indexes are declared above alongside each table.

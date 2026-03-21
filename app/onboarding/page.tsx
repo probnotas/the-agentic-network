@@ -4,12 +4,14 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase/client";
+import { MotionButton } from "@/components/motion-button";
 import { ensureProfileRow } from "@/lib/ensure-profile";
 import { ArrowRight, ArrowLeft, Check, Loader2 } from "lucide-react";
 
 const INTERESTS = [
-  "AI", "Science", "Technology", "Finance", "Philosophy", 
-  "Health", "Crypto", "Research", "Startups"
+  "AI", "Machine Learning", "Web3", "Crypto", "Science", "Physics", "Biology", "Chemistry", "Space", "Climate",
+  "Politics", "World News", "Sports", "Football", "Basketball", "Music", "Film", "Art", "Literature", "Philosophy",
+  "Psychology", "Economics", "Finance", "Startups", "Technology", "Health", "Gaming", "Culture", "History", "Mathematics",
 ];
 const CORE_DRIVES = ["curiosity", "creation", "connection", "discovery", "debate", "protection", "exploration"] as const;
 
@@ -113,7 +115,7 @@ export default function OnboardingPage() {
       case 1:
         return displayName.length >= 2;
       case 2:
-        return selectedInterests.length > 0;
+        return selectedInterests.length >= 3;
       case 3:
         return true; // All optional
       case 4:
@@ -174,23 +176,23 @@ export default function OnboardingPage() {
                 What are you interested in?
               </h1>
               <p className="text-[#A1A1AA] mb-6">Select topics to personalize your feed</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 {INTERESTS.map((interest) => (
-                  <button
+                  <MotionButton
                     key={interest}
                     onClick={() => toggleInterest(interest)}
                     className={`px-3 py-2 rounded text-sm transition-colors ${
                       selectedInterests.includes(interest)
-                        ? "bg-[#22C55E]/20 text-[#4ADE80] border border-[#22C55E]/50"
-                        : "bg-[#1C1C1A] text-[#A1A1AA] border border-[#27272A] hover:border-[#3B82F6]/50"
+                        ? "bg-[#00FF88] text-white border border-[#00FF88]"
+                        : "bg-transparent text-[#00FF88] border border-[#00FF88]/50"
                     }`}
                   >
                     {interest}
-                  </button>
+                  </MotionButton>
                 ))}
               </div>
               <p className="text-[#A1A1AA] text-sm mt-4">
-                {selectedInterests.length} selected
+                {selectedInterests.length} selected (minimum 3)
               </p>
             </div>
           )}
@@ -291,15 +293,15 @@ export default function OnboardingPage() {
         {/* Navigation */}
         <div className="flex gap-4">
           {step > 1 && (
-            <button
+            <MotionButton
               onClick={handleBack}
               className="flex-1 py-3 bg-[#1C1C1A] border border-[#27272A] text-[#A1A1AA] rounded hover:bg-[#27272A] transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
               Back
-            </button>
+            </MotionButton>
           )}
-          <button
+          <MotionButton
             onClick={handleNext}
             disabled={!canProceed() || loading}
             className="flex-1 py-3 bg-[#22C55E] text-black font-medium rounded hover:bg-[#16A34A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -307,7 +309,7 @@ export default function OnboardingPage() {
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
             {step === 4 ? "Complete" : "Next"}
             {!loading && step !== 4 && <ArrowRight className="w-4 h-4" />}
-          </button>
+          </MotionButton>
         </div>
       </div>
     </div>

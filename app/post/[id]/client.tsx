@@ -7,6 +7,7 @@ import { Navbar } from "@/components/navbar";
 import { Heart, MessageSquare, Share2, Star, MoreVertical, ArrowLeft, Send } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
+import { MotionButton } from "@/components/motion-button";
 
 interface Comment {
   id: string;
@@ -84,13 +85,13 @@ export default function PostPageClient({ post, initialComments }: PostPageClient
       
       <main className="pt-20 pb-12 max-w-3xl mx-auto px-4">
         {/* Back Button */}
-        <button
+        <MotionButton
           onClick={() => router.back()}
           className="flex items-center gap-2 text-[#A1A1AA] hover:text-white mb-6 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Back
-        </button>
+        </MotionButton>
 
         {/* Post Card */}
         <div className="bg-[#1C1C1A] border border-[#27272A] rounded-xl p-6 mb-6">
@@ -126,21 +127,21 @@ export default function PostPageClient({ post, initialComments }: PostPageClient
             {/* 3-dot menu for owner */}
             {user?.user_metadata?.username === author?.name && (
               <div className="relative">
-                <button 
+                <MotionButton 
                   onClick={() => setShowMenu(!showMenu)}
                   className="p-2 hover:bg-[#27272A] rounded-lg transition-colors"
                 >
                   <MoreVertical className="w-5 h-5 text-[#A1A1AA]" />
-                </button>
+                </MotionButton>
                 
                 {showMenu && (
                   <div className="absolute right-0 mt-2 w-32 bg-[#1C1C1A] border border-[#27272A] rounded-lg shadow-xl py-1">
-                    <button className="w-full px-4 py-2 text-left text-sm hover:bg-[#27272A] transition-colors">
+                    <MotionButton className="w-full px-4 py-2 text-left text-sm hover:bg-[#27272A] transition-colors">
                       Edit
-                    </button>
-                    <button className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-[#27272A] transition-colors">
+                    </MotionButton>
+                    <MotionButton className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-[#27272A] transition-colors">
                       Delete
-                    </button>
+                    </MotionButton>
                   </div>
                 )}
               </div>
@@ -153,18 +154,14 @@ export default function PostPageClient({ post, initialComments }: PostPageClient
 
           {/* Tags */}
           {post.tags && post.tags.length > 0 && (
-            <div className="flex gap-2 mb-4 flex-wrap">
-              {post.tags.map((tag: string) => (
-                <span key={tag} className="text-xs text-[#22C55E] bg-[#22C55E]/10 px-2 py-1 rounded">
-                  #{tag}
-                </span>
-              ))}
-            </div>
+            <p className="mb-4 text-[12px] leading-relaxed" style={{ color: "rgba(0,255,136,0.7)" }}>
+              {post.tags.map((tag: string) => `#${tag}`).join(" ")}
+            </p>
           )}
 
           {/* Actions */}
           <div className="flex items-center gap-6 pt-4 border-t border-[#27272A]">
-            <button
+            <MotionButton
               onClick={handleLike}
               className={cn(
                 "flex items-center gap-2 transition-colors",
@@ -173,11 +170,11 @@ export default function PostPageClient({ post, initialComments }: PostPageClient
             >
               <Heart className={cn("w-5 h-5", liked && "fill-current")} />
               <span>{post.likes + (liked ? 1 : 0)}</span>
-            </button>
+            </MotionButton>
 
             <div className="flex items-center gap-1">
               {[1, 2, 3, 4, 5].map((star) => (
-                <button
+                <MotionButton
                   key={star}
                   onClick={() => handleRate(star)}
                   className={cn(
@@ -186,21 +183,21 @@ export default function PostPageClient({ post, initialComments }: PostPageClient
                   )}
                 >
                   <Star className={cn("w-5 h-5", star <= userRating && "fill-current")} />
-                </button>
+                </MotionButton>
               ))}
             </div>
 
-            <button className="flex items-center gap-2 text-[#A1A1AA] hover:text-white transition-colors">
+            <MotionButton className="flex items-center gap-2 text-[#A1A1AA] hover:text-white transition-colors">
               <MessageSquare className="w-5 h-5" />
               <span>{comments.length}</span>
-            </button>
+            </MotionButton>
 
-            <button
+            <MotionButton
               onClick={handleShare}
               className="flex items-center gap-2 text-[#A1A1AA] hover:text-white transition-colors ml-auto"
             >
               <Share2 className="w-5 h-5" />
-            </button>
+            </MotionButton>
           </div>
         </div>
 
@@ -224,13 +221,13 @@ export default function PostPageClient({ post, initialComments }: PostPageClient
                   placeholder="Add a comment..."
                   className="w-full bg-[#0A0A0A] border border-[#27272A] px-4 py-3 pr-12 rounded-lg focus:outline-none focus:border-[#22C55E] transition-colors text-white"
                 />
-                <button
+                <MotionButton
                   type="submit"
                   disabled={!newComment.trim()}
                   className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-[#22C55E] hover:text-[#4ADE80] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <Send className="w-4 h-4" />
-                </button>
+                </MotionButton>
               </div>
             </div>
           </form>
@@ -265,13 +262,13 @@ export default function PostPageClient({ post, initialComments }: PostPageClient
                     <p className="text-sm text-[#A1A1AA]">{comment.content}</p>
                   </div>
                   <div className="flex items-center gap-4 mt-1 ml-3">
-                    <button className="text-xs text-[#A1A1AA] hover:text-white transition-colors">
+                    <MotionButton className="text-xs text-[#A1A1AA] hover:text-white transition-colors">
                       Reply
-                    </button>
-                    <button className="text-xs text-[#A1A1AA] hover:text-red-500 transition-colors flex items-center gap-1">
+                    </MotionButton>
+                    <MotionButton className="text-xs text-[#A1A1AA] hover:text-red-500 transition-colors flex items-center gap-1">
                       <Heart className="w-3 h-3" />
                       {comment.likes}
-                    </button>
+                    </MotionButton>
                   </div>
                 </div>
               </div>

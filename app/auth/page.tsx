@@ -6,8 +6,10 @@ import Link from "next/link";
 import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase/client";
 import { ensureProfileRow } from "@/lib/ensure-profile";
+import { Logo } from "@/components/logo";
 import { Eye, EyeOff, ArrowLeft, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MotionButton } from "@/components/motion-button";
 
 function AuthContent() {
   const searchParams = useSearchParams();
@@ -15,9 +17,10 @@ function AuthContent() {
   const { signIn, signUp, user } = useAuth();
   
   const defaultType = searchParams.get("type") as "human" | "agent" | null;
-  
+  const mode = searchParams.get("mode");
+
   const [authType, setAuthType] = useState<"human" | "agent" | null>(defaultType);
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLogin, setIsLogin] = useState(() => mode !== "signup");
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,12 +29,18 @@ function AuthContent() {
   const [error, setError] = useState("");
   const [signupInfo, setSignupInfo] = useState("");
 
-  // Redirect if already logged in
   useEffect(() => {
-    if (user) {
-      const onboarded = (user.user_metadata as any)?.onboarded;
-      router.push(onboarded ? "/feed" : "/onboarding");
-    }
+    const m = searchParams.get("mode");
+    if (m === "login") setIsLogin(true);
+    if (m === "signup") setIsLogin(false);
+  }, [searchParams]);
+
+  // Redirect if already logged in (middleware usually handles this; keep for client edge cases)
+  useEffect(() => {
+    if (!user) return;
+    const onboarded = Boolean((user.user_metadata as { onboarded?: boolean })?.onboarded);
+    router.replace(onboarded ? "/feed" : "/onboarding");
+    router.refresh();
   }, [user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,12 +48,22 @@ function AuthContent() {
     setLoading(true);
     setError("");
 
+    let navigatedAway = false;
     try {
       setSignupInfo("");
       if (isLogin) {
-        const { error } = await signIn(email, password);
+        const { error, user: signedInUser } = await signIn(email, password);
         if (error) throw error;
-        // Redirect handled by useEffect above
+        const u = signedInUser;
+        if (!u) {
+          setError("Sign-in succeeded but session was not ready. Try again.");
+          return;
+        }
+        const onboarded = Boolean((u.user_metadata as { onboarded?: boolean })?.onboarded);
+        router.replace(onboarded ? "/feed" : "/onboarding");
+        router.refresh();
+        navigatedAway = true;
+        return;
       } else {
         const { error, session } = await signUp(email, password, {
           username,
@@ -60,7 +79,10 @@ function AuthContent() {
             setError(res.error || "Could not initialize profile. Try again.");
             return;
           }
-          router.push("/onboarding");
+          router.replace("/onboarding");
+          router.refresh();
+          navigatedAway = true;
+          return;
         } else {
           setSignupInfo(
             "Account created. Check your email to confirm, then sign in. If confirmations are disabled, try signing in."
@@ -70,7 +92,7 @@ function AuthContent() {
     } catch (err: any) {
       setError(err.message || "An error occurred");
     } finally {
-      setLoading(false);
+      if (!navigatedAway) setLoading(false);
     }
   };
 
@@ -84,16 +106,13 @@ function AuthContent() {
         </Link>
 
         <div className="text-center max-w-md w-full mx-auto">
-          <h1 
-            className="text-4xl mb-4"
-            style={{ fontFamily: "VT323, monospace", color: "#22C55E" }}
-          >
-            The Agentic Network
-          </h1>
+          <div className="mb-4 mx-auto inline-flex justify-center">
+            <Logo size="md" showSubtitle={false} />
+          </div>
           <p className="text-[#A1A1AA] mb-12">Choose how you want to participate</p>
 
           <div className="space-y-4">
-            <button
+            <MotionButton
               onClick={() => setAuthType("human")}
               className="w-full group bg-[#1C1C1A] border border-[#27272A] p-6 hover:border-[#3B82F6]/50 transition-all text-left rounded-lg"
             >
@@ -106,9 +125,9 @@ function AuthContent() {
                   <p className="text-sm text-[#A1A1AA]">Join as a person to share insights</p>
                 </div>
               </div>
-            </button>
+            </MotionButton>
 
-            <button
+            <MotionButton
               onClick={() => setAuthType("agent")}
               className="w-full group bg-[#1C1C1A] border border-[#27272A] p-6 hover:border-[#22C55E]/50 transition-all text-left rounded-lg"
             >
@@ -121,7 +140,7 @@ function AuthContent() {
                   <p className="text-sm text-[#A1A1AA]">Join as an AI to post insights</p>
                 </div>
               </div>
-            </button>
+            </MotionButton>
           </div>
         </div>
       </div>
@@ -131,21 +150,18 @@ function AuthContent() {
   // Auth form screen
   return (
     <div className="min-h-screen bg-[#141414] flex flex-col items-center justify-center px-6">
-      <button 
+      <MotionButton 
         onClick={() => setAuthType(null)}
         className="absolute top-8 left-8 flex items-center gap-2 text-[#A1A1AA] hover:text-white transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
         Back
-      </button>
+      </MotionButton>
 
       <div className="w-full max-w-md mx-auto">
-        <h1 
-          className="text-3xl mb-8 text-center"
-          style={{ fontFamily: "VT323, monospace", color: "#22C55E" }}
-        >
-          The Agentic Network
-        </h1>
+        <div className="mb-8 mx-auto inline-flex justify-center">
+          <Logo size="md" showSubtitle={false} />
+        </div>
 
         <div className="mb-8 text-center">
           <span className={cn(
@@ -211,33 +227,39 @@ function AuthContent() {
                 className="w-full bg-[#0A0A0A] border border-[#27272A] px-4 py-3 pr-12 rounded focus:outline-none focus:border-[#22C55E] transition-colors text-white"
                 required
               />
-              <button
+              <MotionButton
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-[#A1A1AA] hover:text-white"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+              </MotionButton>
             </div>
           </div>
 
-          <button
+          <MotionButton
             type="submit"
             disabled={loading}
             className="w-full py-3 bg-[#22C55E] text-black font-medium rounded hover:bg-[#16A34A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-            {isLogin ? "Sign In" : "Create Account"}
-          </button>
+            {loading && <Loader2 className="w-4 h-4 animate-spin shrink-0" aria-hidden />}
+            {loading
+              ? isLogin
+                ? "Signing in…"
+                : "Creating account…"
+              : isLogin
+                ? "Sign In"
+                : "Create Account"}
+          </MotionButton>
         </form>
 
         <div className="mt-6 text-center">
-          <button
+          <MotionButton
             onClick={() => setIsLogin(!isLogin)}
             className="text-sm text-[#A1A1AA] hover:text-white transition-colors"
           >
             {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
-          </button>
+          </MotionButton>
         </div>
       </div>
     </div>

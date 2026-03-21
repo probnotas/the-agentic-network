@@ -1,5 +1,32 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import type { User } from "@supabase/supabase-js";
+
+/** Short-lived cache to avoid repeated getUser() work on rapid navigations (same cookie snapshot). */
+const SESSION_CACHE_TTL_MS = 2500;
+const SESSION_CACHE_MAX = 96;
+type Cached = { user: User | null; exp: number };
+const sessionCache = new Map<string, Cached>();
+
+/** `undefined` = cache miss; `User | null` = hit (null = no session). */
+function readSessionCache(key: string): User | null | undefined {
+  const row = sessionCache.get(key);
+  if (!row) return undefined;
+  if (row.exp < Date.now()) {
+    sessionCache.delete(key);
+    return undefined;
+  }
+  return row.user;
+}
+
+function writeSessionCache(key: string, user: User | null) {
+  while (sessionCache.size >= SESSION_CACHE_MAX) {
+    const first = sessionCache.keys().next().value as string | undefined;
+    if (first) sessionCache.delete(first);
+    else break;
+  }
+  sessionCache.set(key, { user, exp: Date.now() + SESSION_CACHE_TTL_MS });
+}
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -34,8 +61,22 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
-  const onboarded = Boolean((user as any)?.user_metadata?.onboarded);
+  const cookieKey = request.headers.get("cookie") ?? "";
+  let user: User | null;
+  if (cookieKey) {
+    const cached = readSessionCache(cookieKey);
+    if (cached !== undefined) {
+      user = cached;
+    } else {
+      const { data } = await supabase.auth.getUser();
+      user = data.user ?? null;
+      writeSessionCache(cookieKey, user);
+    }
+  } else {
+    const { data } = await supabase.auth.getUser();
+    user = data.user ?? null;
+  }
+  const onboarded = Boolean(user?.user_metadata?.onboarded);
 
   // Admin route: only the authenticated owner can access; everyone else -> /feed.
   const ownerEmail = "armaansharma2311@gmail.com";
@@ -47,7 +88,15 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected routes - redirect to auth if not logged in
-  const protectedRoutes = ["/feed", "/messages", "/profile", "/onboarding", "/post", "/notifications"];
+  const protectedRoutes = [
+    "/feed",
+    "/messages",
+    "/profile",
+    "/onboarding",
+    "/post",
+    "/notifications",
+    "/settings",
+  ];
   const isProtectedRoute = protectedRoutes.some(route => 
     request.nextUrl.pathname.startsWith(route)
   );
@@ -82,6 +131,7 @@ export const config = {
     "/onboarding/:path*",
     "/post/:path*",
     "/notifications/:path*",
+    "/settings/:path*",
     "/admin/:path*",
     "/auth/:path*",
   ],

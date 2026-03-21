@@ -2,6 +2,7 @@
 
 import { Flame, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MotionButton } from "@/components/motion-button";
 
 interface SortToggleProps {
   value: "votes" | "newest";
@@ -11,7 +12,7 @@ interface SortToggleProps {
 export function SortToggle({ value, onChange }: SortToggleProps) {
   return (
     <div className="flex items-center bg-card border border-border">
-      <button
+      <MotionButton
         onClick={() => onChange("votes")}
         className={cn(
           "flex items-center gap-2 px-3 py-1.5 text-sm",
@@ -22,8 +23,8 @@ export function SortToggle({ value, onChange }: SortToggleProps) {
       >
         <Flame className="w-4 h-4" />
         Top
-      </button>
-      <button
+      </MotionButton>
+      <MotionButton
         onClick={() => onChange("newest")}
         className={cn(
           "flex items-center gap-2 px-3 py-1.5 text-sm",
@@ -34,7 +35,7 @@ export function SortToggle({ value, onChange }: SortToggleProps) {
       >
         <Clock className="w-4 h-4" />
         New
-      </button>
+      </MotionButton>
     </div>
   );
 }

@@ -9,6 +9,8 @@ import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase/client";
 import { Search, Send, MoreVertical, Smile, Paperclip, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MotionButton } from "@/components/motion-button";
+import { AnimatePresence, motion } from "framer-motion";
 
 function ConversationItem({ 
   conversation, 
@@ -20,7 +22,7 @@ function ConversationItem({
   onClick: () => void;
 }) {
   return (
-    <button
+    <MotionButton
       onClick={onClick}
       className={cn(
         "w-full flex items-center gap-3 p-3 text-left transition-colors",
@@ -63,7 +65,7 @@ function ConversationItem({
           </div>
         )}
       </div>
-    </button>
+    </MotionButton>
   );
 }
 
@@ -71,12 +73,12 @@ function MessageBubble({ message, isOwn }: { message: any; isOwn: boolean }) {
   return (
     <div className={cn("flex gap-2", isOwn ? "flex-row-reverse" : "flex-row")}>
       <div className={cn(
-        "max-w-[70%] px-4 py-2",
+        "max-w-[70%] px-4 py-2 group",
         isOwn ? "message-bubble-sent text-primary-foreground" : "message-bubble-received text-foreground"
       )}>
         <p className="text-sm">{message.body}</p>
         <div className={cn(
-          "flex items-center gap-2 mt-1 text-xs",
+          "flex items-center gap-2 mt-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity",
           isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
         )}>
           <span>
@@ -295,20 +297,20 @@ function MessagesPageContent() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen messages-animated-bg">
       <Navbar />
       
       <main className="pt-16 h-screen">
         <div className="h-full flex">
           {/* Conversations List */}
-          <div className="w-full md:w-80 lg:w-96 bg-sidebar border-r border-border flex flex-col">
+          <div className="w-full md:w-80 lg:w-96 bg-sidebar border-r border-border flex flex-col shadow-[inset_2px_0_0_rgba(0,255,136,0.35)]">
             {/* Header */}
             <div className="p-4 border-b border-border">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl">Messages</h2>
-                <button className="p-2 hover:bg-secondary transition-colors">
+                <MotionButton className="p-2 hover:bg-secondary transition-colors">
                   <MessageSquare className="w-5 h-5" />
-                </button>
+                </MotionButton>
               </div>
               
               {/* Search */}
@@ -386,32 +388,38 @@ function MessagesPageContent() {
                   </div>
                   
                   <div className="flex items-center gap-2">
-                    <button className="p-2 hover:bg-secondary transition-colors">
+                    <MotionButton className="p-2 hover:bg-secondary transition-colors">
                       <MoreVertical className="w-5 h-5" />
-                    </button>
+                    </MotionButton>
                   </div>
                 </div>
                 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  {messages.map((message) => (
-                    <MessageBubble
-                      key={message.id}
-                      message={message}
-                      isOwn={message.sender_id === user?.id}
-                    />
-                  ))}
+                  <AnimatePresence initial={false}>
+                    {messages.map((message) => (
+                      <motion.div
+                        key={message.id}
+                        initial={{ y: 20, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: 20, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                      >
+                        <MessageBubble message={message} isOwn={message.sender_id === user?.id} />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 </div>
                 
                 {/* Input */}
                 <div className="p-4 border-t border-border">
                   <div className="flex items-center gap-2">
-                    <button className="p-2 hover:bg-secondary transition-colors">
+                    <MotionButton className="p-2 hover:bg-secondary transition-colors">
                       <Paperclip className="w-5 h-5 text-muted-foreground" />
-                    </button>
-                    <button className="p-2 hover:bg-secondary transition-colors">
+                    </MotionButton>
+                    <MotionButton className="p-2 hover:bg-secondary transition-colors">
                       <Smile className="w-5 h-5 text-muted-foreground" />
-                    </button>
+                    </MotionButton>
                     <input
                       type="text"
                       placeholder="Type a message..."
@@ -420,18 +428,23 @@ function MessagesPageContent() {
                       onKeyDown={(e) => e.key === "Enter" && handleSend()}
                       className="flex-1 bg-secondary px-4 py-2 focus:outline-none focus:ring-1 focus:ring-primary"
                     />
-                    <button 
+                    <MotionButton 
                       onClick={handleSend}
                       className="p-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                     >
                       <Send className="w-5 h-5" />
-                    </button>
+                    </MotionButton>
                   </div>
                 </div>
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                Select a conversation to start messaging
+              <div className="flex-1 flex flex-col items-center justify-center">
+                <p
+                  className="font-pixel text-center"
+                  style={{ fontSize: "28px", color: "rgba(255,255,255,0.4)" }}
+                >
+                  Start a conversation
+                </p>
               </div>
             )}
           </div>

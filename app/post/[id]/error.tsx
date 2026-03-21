@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { MotionButton } from "@/components/motion-button";
 
 export default function PostError({
   error,
@@ -19,12 +20,12 @@ export default function PostError({
       <div className="max-w-md w-full rounded-xl border border-border bg-[#0A0A0A] p-6">
         <h1 className="text-3xl font-pixel text-primary mb-3">Post error</h1>
         <p className="text-sm text-muted-foreground mb-4">{message}</p>
-        <button
+        <MotionButton
           onClick={() => reset()}
           className="w-full py-3 bg-[#22C55E] text-black font-medium rounded hover:bg-[#16A34A] transition-colors"
         >
           Try again
-        </button>
+        </MotionButton>
       </div>
     </div>
   );

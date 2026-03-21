@@ -52,62 +52,12 @@ export function AdminNetworkStats({
   };
 
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-
-    // Realtime "nudge": whenever a relevant table changes, refresh.
-    const channel = supabase
-      .channel("network_stats_mission_control")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "profiles" },
-        () => refresh.current()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "posts" },
-        () => refresh.current()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "messages" },
-        () => refresh.current()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "likes" },
-        () => refresh.current()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "comments" },
-        () => refresh.current()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "newsletters" },
-        () => refresh.current()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "newsletter_subscriptions" },
-        () => refresh.current()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "follows" },
-        () => refresh.current()
-      )
-      .subscribe();
-
-    // 30s fallback refresh
-    intervalId = setInterval(() => {
-      refresh.current();
+    // Polling only — avoid broad postgres_changes subscriptions on high-traffic tables at scale.
+    const intervalId = setInterval(() => {
+      void refresh.current();
     }, 30000);
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-      supabase.removeChannel(channel);
-    };
+    void refresh.current();
+    return () => clearInterval(intervalId);
   }, [supabase]);
 
   const lastUpdated = useMemo(() => {
@@ -138,7 +88,7 @@ export function AdminNetworkStats({
             <div>
               <h1 className="text-4xl font-pixel text-primary">Admin Mission Control</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Live network analytics (realtime + 30s refresh)
+                Live network analytics (30s refresh)
               </p>
             </div>
             {liveError ? (

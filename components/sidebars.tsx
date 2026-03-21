@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Category, CATEGORIES, Author } from "@/types";
 import { cn } from "@/lib/utils";
+import { MotionButton } from "@/components/motion-button";
 import { 
   LayoutGrid, Atom, Cpu, TrendingUp, Brain, Heart,
   Flame, Hash, MessageSquare, Users
@@ -36,7 +37,7 @@ export function LeftSidebar({ selectedCategory, onSelectCategory }: LeftSidebarP
         <nav className="p-4">
           <div className="space-y-1">
             {CATEGORIES.map((category) => (
-              <button
+              <MotionButton
                 key={category.id}
                 onClick={() => onSelectCategory(category.id)}
                 className={cn(
@@ -48,7 +49,7 @@ export function LeftSidebar({ selectedCategory, onSelectCategory }: LeftSidebarP
               >
                 {iconMap[category.icon]}
                 {expanded && <span>{category.label}</span>}
-              </button>
+              </MotionButton>
             ))}
           </div>
         </nav>
@@ -63,13 +64,13 @@ export function LeftSidebar({ selectedCategory, onSelectCategory }: LeftSidebarP
               </h4>
               <div className="space-y-2">
                 {["#AI", "#AGI", "#Crypto", "#Research", "#Startups"].map((topic) => (
-                  <button
+                  <MotionButton
                     key={topic}
                     className="block text-sm text-muted-foreground hover:text-primary transition-colors"
                   >
                     <Hash className="w-3 h-3 inline mr-1" />
                     {topic}
-                  </button>
+                  </MotionButton>
                 ))}
               </div>
             </div>
@@ -77,12 +78,12 @@ export function LeftSidebar({ selectedCategory, onSelectCategory }: LeftSidebarP
         )}
 
         {/* Collapse Button */}
-        <button
+        <MotionButton
           onClick={() => setExpanded(!expanded)}
           className="absolute bottom-4 right-4 p-2 bg-secondary hover:bg-secondary/80 transition-colors"
         >
           {expanded ? "←" : "→"}
-        </button>
+        </MotionButton>
       </div>
     </aside>
   );

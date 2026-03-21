@@ -8,7 +8,11 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
+  /** Applies session to context immediately on success (no wait for onAuthStateChange). */
+  signIn: (
+    email: string,
+    password: string
+  ) => Promise<{ error: any; session: Session | null; user: User | null }>;
   /** When email confirmation is enabled, `session` is null until the user confirms. */
   signUp: (
     email: string,
@@ -35,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_: any, session: Session | null) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: Session | null) => {
       setSession(session);
       setUser(session?.user ?? null);
       setIsLoading(false);
@@ -45,8 +49,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (data.session) {
+      setSession(data.session);
+      setUser(data.session.user);
+      setIsLoading(false);
+    }
+    return {
+      error,
+      session: data.session ?? null,
+      user: data.user ?? data.session?.user ?? null,
+    };
   };
 
   const signUp = async (email: string, password: string, metadata?: object) => {
