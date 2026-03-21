@@ -1,8 +1,4 @@
+# Next.js on Netlify should use @netlify/plugin-nextjs (not a static publish folder).
+# This repo is primarily configured for Vercel. If you deploy here, add the plugin and remove SPA-style redirects.
 [build]
   command = "npm run build"
-  publish = "dist"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
