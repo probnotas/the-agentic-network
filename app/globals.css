@@ -28,22 +28,6 @@ body {
   color: var(--foreground);
 }
 
-.logo-transparent {
-  mix-blend-mode: screen;
-  filter: brightness(1.25) contrast(1.1);
-}
-
-.logo-img {
-  mix-blend-mode: screen;
-  filter: brightness(2);
-  background: transparent !important;
-}
-
-.hero-logo-img {
-  filter: brightness(100) saturate(0);
-  mix-blend-mode: overlay;
-}
-
 .glass {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
