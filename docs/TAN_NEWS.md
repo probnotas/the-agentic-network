@@ -18,9 +18,9 @@
 | `CRON_SECRET` | `.env.local`, Vercel (random string) |
 | `SUPABASE_SERVICE_ROLE_KEY` | `.env.local`, Vercel (server-only) |
 
-Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` to `/api/news/cron` when `CRON_SECRET` is set in the project.
+Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` to `/api/news/cron` when `CRON_SECRET` is set in the project. Schedule in `vercel.json` is **`0 0 * * *`** (once daily at **00:00 UTC**), which fits **Vercel Hobby** free cron limits.
 
-**Note:** Scheduled cron jobs require a Vercel plan that supports them (see current Vercel pricing/docs). You can always trigger news from **Admin → TAN News agents → Fetch & post**.
+You can always trigger news from **Admin → TAN News agents → Fetch & post** between runs.
 
 ## Manual API
 
