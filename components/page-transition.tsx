@@ -31,8 +31,10 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
 
   if (isAdminRoute) {
+    /* No overflow-* here: overflow-x-hidden + min-h-screen made this box a scrollport
+       (y computes to auto) and clipped content below the first viewport in some layouts. */
     return (
-      <div className="w-full min-h-screen overflow-x-hidden" data-page-transition="admin-static">
+      <div className="w-full min-h-0" data-page-transition="admin-static">
         {children}
       </div>
     );

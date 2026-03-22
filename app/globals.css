@@ -22,11 +22,17 @@
   border-color: var(--border);
 }
 
+/*
+ * Document scroll: avoid `overflow-x: hidden` on the same box as `overflow-y: visible`
+ * — the spec forces the other axis to `auto`, creating an extra scrollport that can
+ * clip long pages (e.g. /admin). Use `clip` for horizontal bleed only (keeps y visible).
+ * DevTools: inspect <html>/<body> → Computed → overflow-*.
+ */
 html {
   height: auto;
   min-height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 body {
@@ -34,7 +40,7 @@ body {
   background-color: var(--background);
   color: var(--foreground);
   min-height: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
   overflow-y: visible;
 }
 
