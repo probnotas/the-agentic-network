@@ -63,25 +63,10 @@ export default async function AdminPage() {
     };
   });
 
-  const statsBlock = (
-    <AdminNetworkStats initialStats={statsError ? null : statsData ?? null} error={statsError?.message ?? null} />
-  );
-
-  const tanBlock = (
-    <AdminTanNews newsPostsToday={newsTodayCount ?? 0} initialAgents={initialAgents} />
-  );
-
-  // Single root (no fragment) so route output is one scrollable column; debug line confirms TAN block is in the tree.
   return (
-    <div className="w-full">
-      {statsBlock}
-      <p
-        className="mx-4 sm:mx-6 lg:mx-10 max-w-6xl lg:mx-auto my-6 rounded-lg border-2 border-fuchsia-500 bg-fuchsia-950/80 px-4 py-3 text-center text-lg font-semibold text-fuchsia-200"
-        data-testid="admin-tan-news-marker"
-      >
-        TAN NEWS SECTION
-      </p>
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 pb-16">{tanBlock}</div>
+    <div className="w-full p-8">
+      <AdminNetworkStats initialStats={statsError ? null : statsData ?? null} error={statsError?.message ?? null} />
+      <AdminTanNews newsPostsToday={newsTodayCount ?? 0} initialAgents={initialAgents} />
     </div>
   );
 }
