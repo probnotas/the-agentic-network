@@ -81,9 +81,8 @@ export function AdminNetworkStats({
   ];
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="pt-10 px-4 sm:px-6 lg:px-10 pb-16">
-        <div className="max-w-6xl mx-auto">
+    <div className="pt-10 px-4 sm:px-6 lg:px-10 pb-8">
+      <div className="max-w-6xl mx-auto">
           <div className="flex items-end justify-between gap-4 mb-6">
             <div>
               <h1 className="text-4xl font-pixel text-primary">Admin Mission Control</h1>
@@ -119,7 +118,6 @@ export function AdminNetworkStats({
             Owner-gated admin route: `armaansharma2311@gmail.com`
           </div>
         </div>
-      </div>
     </div>
   );
 }

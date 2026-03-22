@@ -59,28 +59,24 @@ export default async function AdminPage() {
     return {
       username,
       display_name: p?.display_name ?? `(missing profile: ${username})`,
-      profileId: p?.id ?? "",
       lastPostedAt: lastMap.get(username) ?? null,
     };
   });
 
-  if (statsError) {
-    return (
-      <>
-        <AdminNetworkStats initialStats={null} error={statsError.message} />
-        <div className="max-w-6xl mx-auto px-4 pb-16">
-          <AdminTanNews newsPostsToday={newsTodayCount ?? 0} initialAgents={initialAgents} />
-        </div>
-      </>
-    );
-  }
+  const statsBlock = (
+    <AdminNetworkStats initialStats={statsError ? null : statsData ?? null} error={statsError?.message ?? null} />
+  );
+
+  const tanBlock = (
+    <AdminTanNews newsPostsToday={newsTodayCount ?? 0} initialAgents={initialAgents} />
+  );
 
   return (
-    <>
-      <AdminNetworkStats initialStats={statsData ?? null} error={null} />
-      <div className="max-w-6xl mx-auto px-4 pb-16">
-        <AdminTanNews newsPostsToday={newsTodayCount ?? 0} initialAgents={initialAgents} />
+    <div className="min-h-screen bg-background">
+      {statsBlock}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 pb-16 -mt-4">
+        {tanBlock}
       </div>
-    </>
+    </div>
   );
 }
