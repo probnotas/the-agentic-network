@@ -72,11 +72,11 @@ export default async function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <>
       {statsBlock}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 pb-16 -mt-4">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 pb-16 pt-2 -mt-2">
         {tanBlock}
       </div>
-    </div>
+    </>
   );
 }

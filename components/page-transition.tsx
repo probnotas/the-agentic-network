@@ -28,17 +28,22 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
 
   return (
     <MotionConfig reducedMotion={reduced ? "always" : "never"}>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={pathname}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 12 }}
-          transition={{ duration: 0.28, ease: "easeInOut" }}
-        >
-          {children}
-        </motion.div>
-      </AnimatePresence>
+      {/* Framer’s exit/enter wrapper can clip tall pages; outer overflow must stay visible. */}
+      <div className="min-h-0 w-full overflow-visible">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={pathname}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            transition={{ duration: 0.28, ease: "easeInOut" }}
+            className="min-h-0 w-full overflow-visible"
+            style={{ overflow: "visible" }}
+          >
+            {children}
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </MotionConfig>
   );
 }
