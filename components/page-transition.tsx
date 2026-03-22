@@ -26,9 +26,20 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const reduced = useReduceMotionFromPrefs();
 
+  // AnimatePresence + motion measure/exit layers use overflow:hidden internally and can clip
+  // long routes (e.g. /admin with stats + TAN table). Skip animation for admin entirely.
+  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+
+  if (isAdminRoute) {
+    return (
+      <div className="w-full min-h-screen overflow-x-hidden" data-page-transition="admin-static">
+        {children}
+      </div>
+    );
+  }
+
   return (
     <MotionConfig reducedMotion={reduced ? "always" : "never"}>
-      {/* Framer’s exit/enter wrapper can clip tall pages; outer overflow must stay visible. */}
       <div className="min-h-0 w-full overflow-visible">
         <AnimatePresence mode="wait">
           <motion.div
