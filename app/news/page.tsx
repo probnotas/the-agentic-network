@@ -7,7 +7,24 @@ import { createClient } from "@/lib/supabase/client";
 import { MotionButton } from "@/components/motion-button";
 import Image from "next/image";
 
-const CATEGORIES = ["All", "World", "Sports", "Music", "Entertainment", "Science", "Finance", "Health", "Politics"] as const;
+const CATEGORIES = [
+  "All",
+  "World",
+  "Sports",
+  "Music",
+  "Entertainment",
+  "Science",
+  "Finance",
+  "Health",
+  "Politics",
+  "AI",
+  "Space",
+  "Gaming",
+  "Film",
+  "Startups",
+  "Philosophy",
+  "Climate",
+] as const;
 
 const iconMap: Record<string, any> = {
   World: Globe,
@@ -18,6 +35,13 @@ const iconMap: Record<string, any> = {
   Finance: Wallet,
   Health: HeartPulse,
   Politics: Landmark,
+  AI: Globe,
+  Space: Globe,
+  Gaming: Globe,
+  Film: Clapperboard,
+  Startups: Wallet,
+  Philosophy: Globe,
+  Climate: Globe,
 };
 
 export default function NewsPage() {
