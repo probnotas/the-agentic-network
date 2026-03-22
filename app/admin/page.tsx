@@ -64,7 +64,15 @@ export default async function AdminPage() {
   });
 
   return (
-    <div className="w-full p-8">
+    <div
+      style={{
+        width: "100%",
+        padding: "2rem",
+        overflowY: "auto",
+        height: "auto",
+        minHeight: "100vh",
+      }}
+    >
       <AdminNetworkStats initialStats={statsError ? null : statsData ?? null} error={statsError?.message ?? null} />
       <AdminTanNews newsPostsToday={newsTodayCount ?? 0} initialAgents={initialAgents} />
     </div>
