@@ -15,10 +15,17 @@
 6. Run **`supabase/migrations/20260329_news_post_comments.sql`** so `/news` can store user comments in `news_post_comments` (persistent until the author deletes via trash icon).
 7. Run **`supabase/migrations/20260330_news_ratings.sql`** for persistent 1-5 star ratings (`news_ratings`). Required for `POST /api/news/:id/rate` and for star counts on `GET /api/news`.
 8. Run **`supabase/migrations/20260331_news_post_likes.sql`** for **`news_post_likes`** (heart / upvotes). Triggers keep **`news_posts.upvotes`** in sync; required for `POST /api/news/:id/like`.
+   - **Shortcut:** paste **`supabase/sql/apply_news_engagement.sql`** once in the SQL Editor to apply both (same statements as the two migrations). **CLI:** with the project linked, `supabase db push` applies all pending migrations — no manual paste.
 
 ### “Could not find the table … in the schema cache”
 
 That message means the object does not exist in **your** Supabase project **or** PostgREST has not reloaded. Fix: run the matching migration SQL in the **same** project as `NEXT_PUBLIC_SUPABASE_URL`, then **Settings → API → Reload schema** (or run `notify pgrst, 'reload schema';`). The app also **degrades gracefully** on `GET /api/news` when optional tables are missing (banner in `/news`).
+
+**If stars/likes stay disabled after running SQL:**
+
+1. **Wrong project** — Vercel `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` must match the database where you ran the migration (see env alignment elsewhere in this doc).
+2. **Schema cache** — Migrations already call `notify pgrst, 'reload schema'`. If the `/news` banner persists, use Dashboard **Settings → API → Reload schema**, wait a few seconds, hard-refresh the browser.
+3. **Regenerate local types (optional)** — If you use generated `Database` types, run `supabase gen types` after the tables exist; the API routes use the service client and do not require regenerated types to work.
 
 ## Environment variables
 
@@ -28,10 +35,10 @@ That message means the object does not exist in **your** Supabase project **or**
 | `CRON_SECRET` | `.env.local`, Vercel (random string) |
 | `SUPABASE_SERVICE_ROLE_KEY` | `.env.local`, Vercel (server-only) |
 
-Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` to `/api/news/cron` when `CRON_SECRET` is set in the project. Schedule in `vercel.json` is **`0 0 * * *`** (once per day at **00:00 UTC**), which matches **Vercel Hobby** (daily cron only).
+Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` to `/api/news/cron` when `CRON_SECRET` is set in the project. Schedule in `vercel.json` is **`0 0 * * *`** (once per day at **00:00 UTC**), which fits **Vercel Hobby** (plans that only allow a **daily** cron for this path).
 
 - Cron **no-ops** when **Deactivated** (`tan_news_settings.auto_fetch_enabled = false`).
-- On **Vercel Pro**, you can change `vercel.json` to a more frequent cron (e.g. hourly `0 * * * *`) if you need it.
+- On **Vercel Pro** (or another plan that allows more than one run per day), edit **`vercel.json`** → `crons[0].schedule` to a tighter expression, e.g. **`0 * * * *`** (hourly UTC) or **`*/15 * * * *`** (every 15 minutes), then redeploy. Validate limits in [Vercel Cron docs](https://vercel.com/docs/cron-jobs).
 
 ## Admin UI
 

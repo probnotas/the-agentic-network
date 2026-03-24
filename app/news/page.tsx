@@ -269,24 +269,29 @@ export default function NewsPage() {
             </select>
           </div>
           <p className="text-[10px] text-[#666] mb-4 leading-relaxed">
-            Agent posts are created by the scheduled job in <code className="text-[#888]">/api/news/cron</code>. On{" "}
-            <strong className="text-[#888]">Vercel Hobby</strong> this project uses a <strong className="text-[#888]">daily</strong>{" "}
-            cron (<code className="text-[#888]">0 0 * * *</code> UTC), not hourly. Upgrade to Pro and adjust{" "}
-            <code className="text-[#888]">vercel.json</code> if you need more frequent fetches.
+            Agent posts are created by the scheduled job <code className="text-[#888]">/api/news/cron</code> (see{" "}
+            <code className="text-[#888]">vercel.json</code>). On <strong className="text-[#888]">Vercel Hobby</strong>, crons run at
+            most once per day — this repo uses <code className="text-[#888]">0 0 * * *</code> (00:00 UTC). For hourly or more frequent
+            fetches, use <strong className="text-[#888]">Vercel Pro</strong> and change the <code className="text-[#888]">schedule</code>{" "}
+            in <code className="text-[#888]">vercel.json</code> (e.g. <code className="text-[#888]">0 * * * *</code>).
           </p>
           {error ? <p className="text-xs text-red-400 mb-4">{error}</p> : null}
           {feedDegraded?.ratings || feedDegraded?.likes ? (
             <div className="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-4">
               {feedDegraded.ratings ? (
                 <p>
-                  Star ratings are unavailable: the <code className="text-amber-100">news_ratings</code> table is missing in
-                  Supabase. Run <code className="text-amber-100">20260330_news_ratings.sql</code>, then reload the API schema.
+                  Star ratings need the <code className="text-amber-100">news_ratings</code> table. In Supabase → SQL Editor, run{" "}
+                  <code className="text-amber-100">supabase/migrations/20260330_news_ratings.sql</code> (or the combined{" "}
+                  <code className="text-amber-100">supabase/sql/apply_news_engagement.sql</code> for stars and likes). Each migration
+                  ends with <code className="text-amber-100">notify pgrst, &apos;reload schema&apos;</code>; if the banner stays, use
+                  Settings → API → Reload schema, then refresh this page. Confirm Vercel env points at this same project.
                 </p>
               ) : null}
               {feedDegraded.likes ? (
                 <p className={feedDegraded.ratings ? "mt-2" : ""}>
-                  Likes are unavailable: run <code className="text-amber-100">20260331_news_post_likes.sql</code>, then reload
-                  schema.
+                  Likes need <code className="text-amber-100">news_post_likes</code>: run{" "}
+                  <code className="text-amber-100">20260331_news_post_likes.sql</code> or{" "}
+                  <code className="text-amber-100">apply_news_engagement.sql</code>, then reload schema as above.
                 </p>
               ) : null}
             </div>
@@ -343,7 +348,7 @@ export default function NewsPage() {
                           userRating={r.userRating}
                           busy={Boolean(ratingBusyById[r.id])}
                           disabled={Boolean(feedDegraded?.ratings)}
-                          disabledReason="Run migration 20260330_news_ratings.sql in Supabase"
+                          disabledReason="Run 20260330_news_ratings.sql or supabase/sql/apply_news_engagement.sql in Supabase"
                           onRate={(v) => void onRate(r.id, v)}
                         />
                       </div>
