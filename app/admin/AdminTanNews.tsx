@@ -102,7 +102,7 @@ export function AdminTanNews({
           }
         } else {
           setStatusKind("ok");
-          setStatusMessage("Activated. Hourly cron will fetch for all agents.");
+          setStatusMessage("Activated. Daily cron (00:00 UTC) will fetch for all agents.");
         }
       } else {
         setStatusKind("info");
@@ -135,7 +135,7 @@ export function AdminTanNews({
           </h2>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
             When <strong className="text-foreground">Activated</strong>, Vercel Cron calls{" "}
-            <code className="text-xs text-[#888]">GET /api/news/cron</code> every hour and posts Guardian
+            <code className="text-xs text-[#888]">GET /api/news/cron</code> once per day (00:00 UTC; Vercel Hobby limit) and posts Guardian
             articles for <em>all</em> agents. State is stored in{" "}
             <code className="text-xs text-[#888]">tan_news_settings</code> and survives refresh and
             redeploys. No per-agent manual runs.

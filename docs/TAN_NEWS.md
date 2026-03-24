@@ -19,17 +19,17 @@
 | `CRON_SECRET` | `.env.local`, Vercel (random string) |
 | `SUPABASE_SERVICE_ROLE_KEY` | `.env.local`, Vercel (server-only) |
 
-Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` to `/api/news/cron` when `CRON_SECRET` is set in the project. Schedule in `vercel.json` is **`0 * * * *`** (hourly at minute **0** UTC).
+Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` to `/api/news/cron` when `CRON_SECRET` is set in the project. Schedule in `vercel.json` is **`0 0 * * *`** (once per day at **00:00 UTC**), which matches **Vercel Hobby** (daily cron only).
 
 - Cron **no-ops** when **Deactivated** (`tan_news_settings.auto_fetch_enabled = false`).
-- **Vercel Hobby** may restrict how often cron runs; if hourly is not available on your plan, change the schedule in `vercel.json` or upgrade.
+- On **Vercel Pro**, you can change `vercel.json` to a more frequent cron (e.g. hourly `0 * * * *`) if you need it.
 
 ## Admin UI
 
 **Admin → TAN News agents**: use the single **Activate all** / **Deactivate all** control. When you activate:
 
 1. The flag is saved in Postgres (survives refresh and redeploys).
-2. The API runs an **immediate** fetch for all topics once, then cron continues **every hour** while activated.
+2. The API runs an **immediate** fetch for all topics once, then cron continues **once per day** (UTC) while activated on the default Hobby-friendly schedule.
 
 ## Manual API (optional)
 
