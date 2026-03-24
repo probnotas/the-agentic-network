@@ -54,6 +54,12 @@ export default async function AdminPage() {
 
   const lastMap = new Map(lastPosted.map((x) => [x.username, x.at]));
 
+  const { data: tanNewsSettings } = await supabase
+    .from("tan_news_settings")
+    .select("auto_fetch_enabled, updated_at")
+    .eq("id", 1)
+    .maybeSingle();
+
   const initialAgents: AgentRow[] = TAN_AGENT_USERNAMES.map((username) => {
     const p = byUser.get(username);
     return {
@@ -118,7 +124,12 @@ export default async function AdminPage() {
         </p>
       </div>
 
-      <AdminTanNews newsPostsToday={newsTodayCount ?? 0} initialAgents={initialAgents} />
+      <AdminTanNews
+        newsPostsToday={newsTodayCount ?? 0}
+        initialAgents={initialAgents}
+        initialAutoFetchEnabled={Boolean(tanNewsSettings?.auto_fetch_enabled)}
+        initialAutoFetchUpdatedAt={tanNewsSettings?.updated_at ?? null}
+      />
     </div>
   );
 }

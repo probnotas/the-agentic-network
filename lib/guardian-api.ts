@@ -61,9 +61,18 @@ export const TAN_AGENT_USERNAMES: GuardianTopicKey[] = [
   "tan_climate",
 ];
 
+/** Normalize env key (trim; Vercel/UI often adds trailing newline). */
+export function normalizeGuardianApiKey(raw: string | undefined | null): string | null {
+  if (raw == null) return null;
+  const t = String(raw).trim();
+  return t.length ? t : null;
+}
+
 export type GuardianArticleResult = {
   id: string;
-  webUrl: string;
+  webUrl?: string;
+  webTitle?: string;
+  apiUrl?: string;
   fields?: {
     headline?: string;
     trailText?: string;
@@ -76,7 +85,10 @@ export type GuardianArticleResult = {
 type GuardianSearchResponse = {
   response?: {
     status?: string;
+    message?: string;
+    /** Present on error responses even when HTTP is 200 */
     results?: GuardianArticleResult[];
+    total?: number;
   };
 };
 
@@ -84,34 +96,114 @@ export function isGuardianTopicKey(s: string): s is GuardianTopicKey {
   return s in GUARDIAN_TOPIC_MAP;
 }
 
-export async function fetchGuardianArticles(
-  topic: GuardianTopicKey,
-  apiKey: string
-): Promise<GuardianArticleResult[]> {
+export function buildGuardianSearchUrl(topic: GuardianTopicKey, apiKey: string): string {
+  const key = normalizeGuardianApiKey(apiKey);
+  if (!key) throw new Error("Guardian API key is empty after trim");
   const config = GUARDIAN_TOPIC_MAP[topic];
   const params = new URLSearchParams({
-    "api-key": apiKey,
+    "api-key": key,
     "show-fields": "headline,trailText,thumbnail,shortUrl,byline",
     "page-size": "5",
     "order-by": "newest",
   });
-
   if ("section" in config && config.section) {
     params.append("section", config.section);
   }
   if ("tags" in config && config.tags) {
     params.append("tag", config.tags);
   }
+  return `https://content.guardianapis.com/search?${params.toString()}`;
+}
 
-  const res = await fetch(`https://content.guardianapis.com/search?${params.toString()}`, {
+/** URL safe to log (no api-key). */
+export function guardianSearchUrlForLog(topic: GuardianTopicKey): string {
+  const config = GUARDIAN_TOPIC_MAP[topic];
+  const params = new URLSearchParams({
+    "show-fields": "headline,trailText,thumbnail,shortUrl,byline",
+    "page-size": "5",
+    "order-by": "newest",
+  });
+  if ("section" in config && config.section) params.append("section", config.section);
+  if ("tags" in config && config.tags) params.append("tag", config.tags);
+  return `https://content.guardianapis.com/search?${params.toString()}&api-key=[REDACTED]`;
+}
+
+export type GuardianFetchDiagnostics = {
+  httpStatus: number;
+  guardianStatus?: string;
+  guardianMessage?: string;
+  total?: number;
+  resultCount: number;
+  requestUrlLogged: string;
+};
+
+export async function fetchGuardianArticles(
+  topic: GuardianTopicKey,
+  apiKey: string
+): Promise<{ articles: GuardianArticleResult[]; diagnostics: GuardianFetchDiagnostics }> {
+  const key = normalizeGuardianApiKey(apiKey);
+  if (!key) {
+    throw new Error("GUARDIAN_API_KEY is missing or whitespace-only after trim");
+  }
+
+  const url = buildGuardianSearchUrl(topic, key);
+  const logUrl = guardianSearchUrlForLog(topic);
+
+  console.log(`[TAN/Guardian] GET ${logUrl}`);
+
+  const res = await fetch(url, {
+    cache: "no-store",
     next: { revalidate: 0 },
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Guardian API HTTP ${res.status}: ${text.slice(0, 200)}`);
+  const httpStatus = res.status;
+  let bodyText = "";
+  try {
+    bodyText = await res.text();
+  } catch (e) {
+    console.error("[TAN/Guardian] Failed to read response body", e);
+    throw new Error(`Guardian read body failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  const data = (await res.json()) as GuardianSearchResponse;
-  return data.response?.results ?? [];
+  if (!res.ok) {
+    console.error(`[TAN/Guardian] HTTP ${httpStatus}`, bodyText.slice(0, 500));
+    throw new Error(`Guardian API HTTP ${httpStatus}: ${bodyText.slice(0, 280)}`);
+  }
+
+  let data: GuardianSearchResponse;
+  try {
+    data = JSON.parse(bodyText) as GuardianSearchResponse;
+  } catch (e) {
+    console.error("[TAN/Guardian] Invalid JSON", bodyText.slice(0, 400));
+    throw new Error("Guardian API returned non-JSON");
+  }
+
+  const resp = data.response;
+  if (!resp) {
+    console.error("[TAN/Guardian] Missing response object", bodyText.slice(0, 400));
+    throw new Error("Guardian JSON missing `response`");
+  }
+
+  // Critical: Guardian often returns HTTP 200 with response.status === "error" for bad keys / limits.
+  if (resp.status === "error") {
+    const msg = resp.message || "Unknown Guardian error";
+    console.error(`[TAN/Guardian] API error status: ${msg}`);
+    throw new Error(`Guardian API: ${msg}`);
+  }
+
+  const results = resp.results ?? [];
+  const diagnostics: GuardianFetchDiagnostics = {
+    httpStatus,
+    guardianStatus: resp.status,
+    guardianMessage: resp.message,
+    total: resp.total,
+    resultCount: results.length,
+    requestUrlLogged: logUrl,
+  };
+
+  console.log(
+    `[TAN/Guardian] topic=${topic} status=${resp.status ?? "?"} total=${resp.total ?? "?"} results=${results.length}`
+  );
+
+  return { articles: results, diagnostics };
 }

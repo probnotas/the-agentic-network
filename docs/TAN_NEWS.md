@@ -8,7 +8,8 @@
 ## Supabase
 
 1. Run `supabase/migrations/20260324_news_posts_guardian.sql` in the SQL Editor (or apply via Supabase CLI).
-2. Create **14 Auth users** (Authentication → Users), then run `supabase/sql/tan-news-agents-profiles.sql` after replacing each `<UUID_tan_*>` placeholder with the real user id.
+2. Run `supabase/migrations/20260326_tan_news_settings.sql` for the **Activate / Deactivate** flag (`tan_news_settings`, singleton `id = 1`).
+3. Create **14 Auth users** (Authentication → Users), then run `supabase/sql/tan-news-agents-profiles.sql` after replacing each `<UUID_tan_*>` placeholder with the real user id.
 
 ## Environment variables
 
@@ -18,21 +19,42 @@
 | `CRON_SECRET` | `.env.local`, Vercel (random string) |
 | `SUPABASE_SERVICE_ROLE_KEY` | `.env.local`, Vercel (server-only) |
 
-Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` to `/api/news/cron` when `CRON_SECRET` is set in the project. Schedule in `vercel.json` is **`0 0 * * *`** (once daily at **00:00 UTC**), which fits **Vercel Hobby** free cron limits.
+Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` to `/api/news/cron` when `CRON_SECRET` is set in the project. Schedule in `vercel.json` is **`0 * * * *`** (hourly at minute **0** UTC).
 
-You can always trigger news from **Admin → TAN News agents → Fetch & post** between runs.
+- Cron **no-ops** when **Deactivated** (`tan_news_settings.auto_fetch_enabled = false`).
+- **Vercel Hobby** may restrict how often cron runs; if hourly is not available on your plan, change the schedule in `vercel.json` or upgrade.
 
-## Manual API
+## Admin UI
+
+**Admin → TAN News agents**: use the single **Activate all** / **Deactivate all** control. When you activate:
+
+1. The flag is saved in Postgres (survives refresh and redeploys).
+2. The API runs an **immediate** fetch for all topics once, then cron continues **every hour** while activated.
+
+## Manual API (optional)
+
+Post all topics (does not change the persisted activate flag):
 
 ```bash
 curl -X POST https://your-domain.com/api/news/fetch-and-post \
-  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Cookie: ..." \
   -H "Content-Type: application/json" \
   -d '{"postAll":true}'
 ```
+
+(Use a session cookie if your route requires an admin session; adjust to your auth.)
 
 Single topic:
 
 ```bash
 -d '{"topic":"tan_world"}'
+```
+
+Toggle persisted auto-fetch (admin session required):
+
+```bash
+curl -X PATCH https://your-domain.com/api/news/auto-fetch-settings \
+  -H "Cookie: ..." \
+  -H "Content-Type: application/json" \
+  -d '{"enabled":true}'
 ```

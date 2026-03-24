@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createServerUserClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { isGuardianTopicKey, TAN_AGENT_USERNAMES } from "@/lib/guardian-api";
+import { isGuardianTopicKey, normalizeGuardianApiKey, TAN_AGENT_USERNAMES } from "@/lib/guardian-api";
 import { runAllTopicsParallel, runSingleTopic } from "@/lib/tan-news-runner";
 import { ADMIN_OWNER_EMAIL } from "@/lib/admin-config";
 import type { GuardianTopicKey } from "@/lib/guardian-api";
@@ -18,6 +18,7 @@ async function isAuthorized(req: Request): Promise<boolean> {
   const secret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
   if (secret && auth === `Bearer ${secret}`) {
+    console.log("[TAN/fetch-and-post] authorized via CRON_SECRET");
     return true;
   }
   try {
@@ -26,9 +27,11 @@ async function isAuthorized(req: Request): Promise<boolean> {
       data: { user },
     } = await supabase.auth.getUser();
     if (user?.email && user.email.toLowerCase() === ADMIN_OWNER_EMAIL.toLowerCase()) {
+      console.log("[TAN/fetch-and-post] authorized via admin session", user.email);
       return true;
     }
-  } catch {
+  } catch (e) {
+    console.error("[TAN/fetch-and-post] session check failed", e);
     return false;
   }
   return false;
@@ -60,7 +63,10 @@ async function resolveProfileIdForTopic(
     .eq("username", topic)
     .eq("account_type", "agent")
     .maybeSingle();
-  if (error || !row) {
+  if (error) {
+    return { ok: false, error: `Profile query failed: ${error.message}` };
+  }
+  if (!row) {
     return {
       ok: false,
       error: `No agent profile found for username "${topic}". Create auth user + profile first.`,
@@ -70,25 +76,54 @@ async function resolveProfileIdForTopic(
 }
 
 export async function POST(req: Request) {
+  console.log("[TAN/fetch-and-post] POST start");
+
   if (!(await isAuthorized(req))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const guardianKey = process.env.GUARDIAN_API_KEY;
+  const rawKey = process.env.GUARDIAN_API_KEY;
+  const guardianKey = normalizeGuardianApiKey(rawKey);
   if (!guardianKey) {
-    return NextResponse.json({ error: "GUARDIAN_API_KEY is not configured" }, { status: 503 });
+    console.error("[TAN/fetch-and-post] GUARDIAN_API_KEY missing or whitespace-only");
+    return NextResponse.json(
+      {
+        error: "GUARDIAN_API_KEY is not configured or is empty after trim",
+        diagnostics: { guardianKeyConfigured: false },
+      },
+      { status: 503 }
+    );
+  }
+  console.log("[TAN/fetch-and-post] GUARDIAN_API_KEY present length=", guardianKey.length);
+
+  let admin: ReturnType<typeof createServiceRoleClient>;
+  try {
+    admin = createServiceRoleClient();
+    console.log("[TAN/fetch-and-post] service role client OK");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Service client error";
+    console.error("[TAN/fetch-and-post] service role client FAILED", msg);
+    return NextResponse.json({ error: msg, diagnostics: { serviceClient: false } }, { status: 503 });
   }
 
   let body: Body;
   try {
     body = (await req.json()) as Body;
-  } catch {
+  } catch (e) {
+    console.error("[TAN/fetch-and-post] invalid JSON", e);
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   if (body.postAll === true) {
-    const { posted, skipped, results } = await runAllTopicsParallel(guardianKey);
-    return NextResponse.json({ posted, skipped, results });
+    console.log("[TAN/fetch-and-post] postAll=true");
+    try {
+      const { posted, skipped, results } = await runAllTopicsParallel(guardianKey);
+      return NextResponse.json({ posted, skipped, results });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[TAN/fetch-and-post] postAll failed", msg);
+      return NextResponse.json({ error: msg, posted: 0, skipped: 0 }, { status: 500 });
+    }
   }
 
   const topicRaw = body.topic;
@@ -99,24 +134,24 @@ export async function POST(req: Request) {
     );
   }
 
-  let admin: ReturnType<typeof createServiceRoleClient>;
-  try {
-    admin = createServiceRoleClient();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Service client error";
-    return NextResponse.json({ error: msg }, { status: 503 });
-  }
-
   const resolved = await resolveProfileIdForTopic(admin, topicRaw, body.agentProfileId);
   if (!resolved.ok) {
-    return NextResponse.json({ error: resolved.error }, { status: 400 });
+    console.warn("[TAN/fetch-and-post] profile resolve failed", resolved.error);
+    return NextResponse.json(
+      { error: resolved.error, topic: topicRaw, posted: 0, skipped: 0 },
+      { status: 400 }
+    );
   }
 
   const r = await runSingleTopic(admin, topicRaw, guardianKey, resolved.profileId);
+  console.log("[TAN/fetch-and-post] single topic done", topicRaw, r);
+
   return NextResponse.json({
     topic: topicRaw,
     posted: r.posted,
     skipped: r.skipped,
     error: r.error,
+    detail: r.detail,
+    diagnostics: r.diagnostics,
   });
 }
