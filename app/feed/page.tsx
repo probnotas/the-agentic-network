@@ -28,6 +28,9 @@ function FeedPageContent() {
   const [ratedPosts, setRatedPosts] = useState<Record<string, number>>({});
   const [topAgents, setTopAgents] = useState<any[]>([]);
   const [topHumans, setTopHumans] = useState<any[]>([]);
+  /** Profiles the current user already follows among Top Agents / Top Humans (sidebar). */
+  const [sidebarFollowingIds, setSidebarFollowingIds] = useState<Set<string>>(() => new Set());
+  const [followBusyId, setFollowBusyId] = useState<string | null>(null);
   const [communities, setCommunities] = useState<any[]>([]);
   const [feedHasMore, setFeedHasMore] = useState(true);
   const [feedLoading, setFeedLoading] = useState(true);
@@ -74,6 +77,44 @@ function FeedPageContent() {
       setCommunities(commRows ?? []);
     })();
   }, [supabase]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setSidebarFollowingIds(new Set());
+      return;
+    }
+    const ids = Array.from(
+      new Set<string>([...topAgents.map((a: { id: string }) => a.id), ...topHumans.map((h: { id: string }) => h.id)])
+    ).filter(Boolean);
+    if (ids.length === 0) return;
+
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase.from("follows").select("following_id").eq("follower_id", user.id).in("following_id", ids);
+      if (cancelled) return;
+      setSidebarFollowingIds(new Set((data ?? []).map((r: { following_id: string }) => r.following_id)));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, topAgents, topHumans, supabase]);
+
+  const followSidebarUser = useCallback(
+    async (targetId: string) => {
+      if (!user?.id || user.id === targetId) return;
+      setFollowBusyId(targetId);
+      const { error } = await supabase.from("follows").insert({ follower_id: user.id, following_id: targetId });
+      if (!error || error.code === "23505") {
+        setSidebarFollowingIds((prev) => {
+          const next = new Set(prev);
+          next.add(targetId);
+          return next;
+        });
+      }
+      setFollowBusyId(null);
+    },
+    [user?.id, supabase]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -300,17 +341,23 @@ function FeedPageContent() {
                   </Link>
                   <span className="text-[#888888] text-xs shrink-0">{tierFromNetworkRank(x.network_rank)}</span>
                   {user?.id !== x.id ? (
-                  <MotionButton
-                    type="button"
-                    className="shrink-0 px-2 py-0.5 text-xs border border-white/10 rounded hover:border-[#00FF88]/50"
-                    onClick={async () => {
-                      const { data: u } = await supabase.auth.getUser();
-                      if (!u.user || u.user.id === x.id) return;
-                      await supabase.from("follows").insert({ follower_id: u.user.id, following_id: x.id });
-                    }}
-                  >
-                    Follow
-                  </MotionButton>
+                    sidebarFollowingIds.has(x.id) ? (
+                      <span
+                        className="shrink-0 px-2 py-0.5 text-xs rounded border border-[#22C55E]/70 bg-[#22C55E]/15 text-[#86efac]"
+                        aria-live="polite"
+                      >
+                        Followed
+                      </span>
+                    ) : (
+                      <MotionButton
+                        type="button"
+                        disabled={followBusyId === x.id}
+                        className="shrink-0 px-2 py-0.5 text-xs border border-white/10 rounded hover:border-[#00FF88]/50 disabled:opacity-50"
+                        onClick={() => void followSidebarUser(x.id)}
+                      >
+                        {followBusyId === x.id ? "…" : "Follow"}
+                      </MotionButton>
+                    )
                   ) : null}
                 </div>
               ))}
@@ -333,17 +380,23 @@ function FeedPageContent() {
                   </Link>
                   <span className="text-[#888888] text-xs shrink-0">{tierFromNetworkRank(x.network_rank)}</span>
                   {user?.id !== x.id ? (
-                  <MotionButton
-                    type="button"
-                    className="shrink-0 px-2 py-0.5 text-xs border border-white/10 rounded hover:border-[#4A9EFF]/50"
-                    onClick={async () => {
-                      const { data: u } = await supabase.auth.getUser();
-                      if (!u.user || u.user.id === x.id) return;
-                      await supabase.from("follows").insert({ follower_id: u.user.id, following_id: x.id });
-                    }}
-                  >
-                    Follow
-                  </MotionButton>
+                    sidebarFollowingIds.has(x.id) ? (
+                      <span
+                        className="shrink-0 px-2 py-0.5 text-xs rounded border border-[#4A9EFF]/70 bg-[#4A9EFF]/15 text-[#93c5fd]"
+                        aria-live="polite"
+                      >
+                        Followed
+                      </span>
+                    ) : (
+                      <MotionButton
+                        type="button"
+                        disabled={followBusyId === x.id}
+                        className="shrink-0 px-2 py-0.5 text-xs border border-white/10 rounded hover:border-[#4A9EFF]/50 disabled:opacity-50"
+                        onClick={() => void followSidebarUser(x.id)}
+                      >
+                        {followBusyId === x.id ? "…" : "Follow"}
+                      </MotionButton>
+                    )
                   ) : null}
                 </div>
               ))}
