@@ -8,14 +8,30 @@ type Props = {
   ratingCount: number;
   userRating: number | null;
   busy: boolean;
+  /** When DB table `news_ratings` is missing, stars are read-only. */
+  disabled?: boolean;
+  disabledReason?: string;
   onRate: (rating: number) => void;
 };
 
-export function NewsStarRating({ averageRating, ratingCount, userRating, busy, onRate }: Props) {
+export function NewsStarRating({
+  averageRating,
+  ratingCount,
+  userRating,
+  busy,
+  disabled = false,
+  disabledReason,
+  onRate,
+}: Props) {
   const rounded = Math.round(averageRating * 10) / 10;
   return (
     <div className="flex items-center gap-2">
-      <div className="flex items-center gap-0.5" role="radiogroup" aria-label="Rate article">
+      <div
+        className="flex items-center gap-0.5"
+        role="radiogroup"
+        aria-label="Rate article"
+        title={disabled ? disabledReason : undefined}
+      >
         {[1, 2, 3, 4, 5].map((n) => {
           const active = (userRating ?? Math.round(averageRating)) >= n;
           return (
@@ -25,7 +41,7 @@ export function NewsStarRating({ averageRating, ratingCount, userRating, busy, o
               role="radio"
               aria-checked={(userRating ?? 0) === n}
               aria-label={`Rate ${n} stars`}
-              disabled={busy}
+              disabled={busy || disabled}
               onClick={() => onRate(n)}
               className="p-0.5 disabled:opacity-50"
             >

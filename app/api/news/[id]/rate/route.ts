@@ -3,6 +3,7 @@ import { createClient as createServerUserClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { computeNewsScore, computeRatingScore, computeRecencyScore } from "@/lib/news-ranking";
 import { aggregateRatingsByArticle } from "@/lib/news-ratings";
+import { isMissingRelationError } from "@/lib/supabase-relation-errors";
 import type { RateNewsRequest, RateNewsResponse } from "@/lib/news-feed-types";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   );
   if (upsertError) {
     console.error("[/api/news/:id/rate POST] upsert failed", upsertError.message);
+    if (isMissingRelationError(upsertError)) {
+      return NextResponse.json(
+        {
+          error:
+            "Table news_ratings is missing. Run supabase/migrations/20260330_news_ratings.sql in your Supabase project, then reload schema.",
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: upsertError.message }, { status: 500 });
   }
 
@@ -71,6 +81,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .select("article_id,rating")
     .eq("article_id", articleId);
   if (aggErr) {
+    if (isMissingRelationError(aggErr)) {
+      return NextResponse.json(
+        { error: "news_ratings table missing after write — run migration 20260330 and reload schema." },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: aggErr.message }, { status: 500 });
   }
 

@@ -1,4 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import { toTwoSentenceSummary } from "@/lib/news-summary";
 import {
   fetchGuardianArticles,
   TOPIC_TO_NEWS_CATEGORY,
@@ -200,7 +201,7 @@ export async function runSingleTopic(
       (fields.headline && fields.headline.trim()) ||
       (article.webTitle && article.webTitle.trim()) ||
       fallbackTitle;
-    const summary = fields.trailText?.trim() || null;
+    const summary = toTwoSentenceSummary(fields.trailText?.trim() || null);
     const rawThumb = fields.thumbnail?.trim();
     const thumbnail = rawThumb
       ? rawThumb.startsWith("http")

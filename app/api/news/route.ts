@@ -3,6 +3,7 @@ import { createClient as createServerUserClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { computeNewsScore, computeRatingScore, computeRecencyScore } from "@/lib/news-ranking";
 import { aggregateRatingsByArticle } from "@/lib/news-ratings";
+import { isMissingRelationError } from "@/lib/supabase-relation-errors";
 import type { NewsArticle, NewsFeedResponse, NewsSort, NewsTimeWindow } from "@/lib/news-feed-types";
 
 export const dynamic = "force-dynamic";
@@ -84,37 +85,70 @@ export async function GET(req: Request) {
   const rows = (data ?? []) as NewsPostRow[];
   const ids = rows.map((r) => r.id);
 
-  const [allRatingsRes, userRatingRes] = ids.length
-    ? await Promise.all([
-        admin
-          .from("news_ratings")
-          .select("article_id,rating")
-          .in("article_id", ids),
-        (async () => {
-          const userId = userResult?.data?.user?.id ?? null;
-          const anonId = parseAnonSessionId(req);
-          if (!userId && !anonId) return { data: [] as Array<{ article_id: string; rating: number }> };
-          let q = admin.from("news_ratings").select("article_id,rating").in("article_id", ids).limit(500);
-          if (userId) q = q.eq("user_id", userId);
-          else q = q.eq("anon_session_id", anonId!);
-          return q;
-        })(),
-      ])
-    : [{ data: [] as Array<{ article_id: string; rating: number }>, error: null }, { data: [] as Array<{ article_id: string; rating: number }> }];
+  const userId = userResult?.data?.user?.id ?? null;
+  const anonId = parseAnonSessionId(req);
+  const likerKey = userId ? `user:${userId}` : anonId ? `anon:${anonId}` : null;
 
-  if (allRatingsRes.error) {
-    console.error("[/api/news GET] ratings query failed", allRatingsRes.error.message);
-    return NextResponse.json({ error: allRatingsRes.error.message }, { status: 500 });
-  }
-  if ("error" in userRatingRes && userRatingRes.error) {
-    console.error("[/api/news GET] user ratings query failed", userRatingRes.error.message);
-    return NextResponse.json({ error: userRatingRes.error.message }, { status: 500 });
+  let ratingsMissing = false;
+  let likesMissing = false;
+  let ratingRows: Array<{ article_id: string; rating: number }> = [];
+  const myRatingByArticle = new Map<string, number>();
+  const myLikedArticles = new Set<string>();
+
+  if (ids.length > 0) {
+    const allRatingsRes = await admin.from("news_ratings").select("article_id,rating").in("article_id", ids);
+    if (allRatingsRes.error) {
+      if (isMissingRelationError(allRatingsRes.error)) {
+        ratingsMissing = true;
+        console.warn("[/api/news GET] news_ratings missing — stars disabled until migration 20260330");
+      } else {
+        console.error("[/api/news GET] ratings query failed", allRatingsRes.error.message);
+        return NextResponse.json({ error: allRatingsRes.error.message }, { status: 500 });
+      }
+    } else {
+      ratingRows = (allRatingsRes.data ?? []) as Array<{ article_id: string; rating: number }>;
+    }
+
+    if (!ratingsMissing && (userId || anonId)) {
+      let q = admin.from("news_ratings").select("article_id,rating").in("article_id", ids).limit(500);
+      if (userId) q = q.eq("user_id", userId);
+      else q = q.eq("anon_session_id", anonId!);
+      const ur = await q;
+      if (ur.error) {
+        if (isMissingRelationError(ur.error)) {
+          ratingsMissing = true;
+        } else {
+          console.error("[/api/news GET] user ratings query failed", ur.error.message);
+          return NextResponse.json({ error: ur.error.message }, { status: 500 });
+        }
+      } else {
+        for (const r of (ur.data ?? []) as Array<{ article_id: string; rating: number }>) {
+          myRatingByArticle.set(r.article_id, Number(r.rating));
+        }
+      }
+    }
+
+    if (likerKey) {
+      const lr = await admin.from("news_post_likes").select("news_post_id").in("news_post_id", ids).eq("liker_key", likerKey);
+      if (lr.error) {
+        if (isMissingRelationError(lr.error)) {
+          likesMissing = true;
+          console.warn("[/api/news GET] news_post_likes missing — likes disabled until migration 20260331");
+        } else {
+          console.error("[/api/news GET] likes query failed", lr.error.message);
+          return NextResponse.json({ error: lr.error.message }, { status: 500 });
+        }
+      } else {
+        for (const row of lr.data ?? []) {
+          myLikedArticles.add((row as { news_post_id: string }).news_post_id);
+        }
+      }
+    }
   }
 
-  const aggMap = aggregateRatingsByArticle((allRatingsRes.data ?? []) as Array<{ article_id: string; rating: number }>);
-  const myRatingByArticle = new Map(
-    ((userRatingRes.data ?? []) as Array<{ article_id: string; rating: number }>).map((r) => [r.article_id, Number(r.rating)])
-  );
+  const aggMap = ratingsMissing
+    ? new Map<string, { averageRating: number; ratingCount: number }>()
+    : aggregateRatingsByArticle(ratingRows);
 
   const items: NewsArticle[] = rows.map((r) => {
     const agg = aggMap.get(r.id) ?? { averageRating: 0, ratingCount: 0 };
@@ -128,12 +162,14 @@ export async function GET(req: Request) {
       url: r.source_url,
       publishedAt: r.created_at,
       imageUrl: r.thumbnail_url,
+      rank: 0,
       score: computeNewsScore(recencyScore, ratingScore),
       averageRating: Math.round(agg.averageRating * 100) / 100,
       ratingCount: agg.ratingCount,
-      userRating: myRatingByArticle.get(r.id) ?? null,
+      userRating: ratingsMissing ? null : myRatingByArticle.get(r.id) ?? null,
       category: r.category,
       upvotes: Number(r.upvotes ?? 0),
+      userLiked: likesMissing ? false : myLikedArticles.has(r.id),
       commentCount: Number(r.comment_count ?? 0),
     };
   });
@@ -152,6 +188,15 @@ export async function GET(req: Request) {
     items.sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt));
   }
 
+  items.forEach((item, idx) => {
+    item.rank = from + idx + 1;
+  });
+
+  const degraded =
+    ratingsMissing || likesMissing
+      ? { ...(ratingsMissing ? { ratings: true as const } : {}), ...(likesMissing ? { likes: true as const } : {}) }
+      : undefined;
+
   const out: NewsFeedResponse = {
     items,
     page,
@@ -161,6 +206,7 @@ export async function GET(req: Request) {
     sort,
     topic,
     timeWindow,
+    degraded,
   };
   return NextResponse.json(out);
 }

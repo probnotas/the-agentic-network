@@ -5,8 +5,7 @@ import {
   ExternalLink,
   MessageSquare,
   Share2,
-  ChevronUp,
-  ChevronDown,
+  Heart,
   Globe,
   Trophy,
   Music,
@@ -22,7 +21,14 @@ import Image from "next/image";
 import { NewsPostCommentsSection } from "@/components/news-post-comments";
 import { NewsStarRating } from "@/components/news-star-rating";
 import { useAuth } from "@/components/auth-provider";
-import type { NewsArticle, NewsFeedResponse, NewsSort, NewsTimeWindow, RateNewsResponse } from "@/lib/news-feed-types";
+import type {
+  NewsArticle,
+  NewsFeedResponse,
+  NewsSort,
+  NewsTimeWindow,
+  RateNewsResponse,
+  LikeNewsResponse,
+} from "@/lib/news-feed-types";
 import { computeNewsScore, computeRatingScore, computeRecencyScore } from "@/lib/news-ranking";
 
 const CATEGORIES = [
@@ -70,7 +76,9 @@ export default function NewsPage() {
   const [rows, setRows] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [feedDegraded, setFeedDegraded] = useState<NonNullable<NewsFeedResponse["degraded"]> | null>(null);
   const [ratingBusyById, setRatingBusyById] = useState<Record<string, boolean>>({});
+  const [likeBusyById, setLikeBusyById] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const anonSessionId = useMemo(() => {
@@ -101,12 +109,15 @@ export default function NewsPage() {
       if (!res.ok) {
         setError(data.error ?? `Failed to load (${res.status})`);
         setRows([]);
+        setFeedDegraded(null);
       } else {
         setRows(data.items ?? []);
+        setFeedDegraded(data.degraded ?? null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load news");
       setRows([]);
+      setFeedDegraded(null);
     } finally {
       setLoading(false);
     }
@@ -117,6 +128,8 @@ export default function NewsPage() {
   }, [loadRows]);
 
   const onRate = async (articleId: string, rating: number) => {
+    if (feedDegraded?.ratings) return;
+
     const prev = rows.find((r) => r.id === articleId) ?? null;
     if (!prev) return;
 
@@ -178,6 +191,41 @@ export default function NewsPage() {
     }
   };
 
+  const onToggleLike = async (articleId: string) => {
+    if (feedDegraded?.likes) return;
+    if (!anonSessionId && !user) {
+      setError("Sign in (or allow site storage) to like posts.");
+      return;
+    }
+    const prev = rows.find((r) => r.id === articleId) ?? null;
+    if (!prev) return;
+
+    const nextLiked = !prev.userLiked;
+    const nextCount = Math.max(0, prev.upvotes + (nextLiked ? 1 : -1));
+    setRows((old) => old.map((r) => (r.id === articleId ? { ...r, userLiked: nextLiked, upvotes: nextCount } : r)));
+    setLikeBusyById((m) => ({ ...m, [articleId]: true }));
+
+    try {
+      const res = await fetch(`/api/news/${articleId}/like`, {
+        method: "POST",
+        headers: anonSessionId ? { "x-anon-session-id": anonSessionId } : undefined,
+      });
+      const data = (await res.json()) as LikeNewsResponse & { error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      setRows((old) =>
+        old.map((r) => (r.id === articleId ? { ...r, userLiked: data.liked, upvotes: data.likeCount } : r))
+      );
+    } catch (e) {
+      console.error("[news/like] failed", e);
+      setRows((old) => old.map((r) => (r.id === articleId && prev ? prev : r)));
+      setError(e instanceof Error ? e.message : "Like failed");
+    } finally {
+      setLikeBusyById((m) => ({ ...m, [articleId]: false }));
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
       <Navbar />
@@ -220,7 +268,29 @@ export default function NewsPage() {
               <option value="30d">Last 30 days</option>
             </select>
           </div>
+          <p className="text-[10px] text-[#666] mb-4 leading-relaxed">
+            Agent posts are created by the scheduled job in <code className="text-[#888]">/api/news/cron</code>. On{" "}
+            <strong className="text-[#888]">Vercel Hobby</strong> this project uses a <strong className="text-[#888]">daily</strong>{" "}
+            cron (<code className="text-[#888]">0 0 * * *</code> UTC), not hourly. Upgrade to Pro and adjust{" "}
+            <code className="text-[#888]">vercel.json</code> if you need more frequent fetches.
+          </p>
           {error ? <p className="text-xs text-red-400 mb-4">{error}</p> : null}
+          {feedDegraded?.ratings || feedDegraded?.likes ? (
+            <div className="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-4">
+              {feedDegraded.ratings ? (
+                <p>
+                  Star ratings are unavailable: the <code className="text-amber-100">news_ratings</code> table is missing in
+                  Supabase. Run <code className="text-amber-100">20260330_news_ratings.sql</code>, then reload the API schema.
+                </p>
+              ) : null}
+              {feedDegraded.likes ? (
+                <p className={feedDegraded.ratings ? "mt-2" : ""}>
+                  Likes are unavailable: run <code className="text-amber-100">20260331_news_post_likes.sql</code>, then reload
+                  schema.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="space-y-3">
             {loading ? (
@@ -237,20 +307,34 @@ export default function NewsPage() {
               const showComments = expanded.has(r.id);
               return (
                 <article key={r.id} className="bg-[#0f0f0f] border border-white/10 rounded-xl p-3">
-                  <div className="grid grid-cols-[40px_1fr_140px] gap-3 items-start">
-                    <div className="flex flex-col items-center text-[#A1A1AA] gap-1 pt-1">
-                      <ChevronUp className="w-4 h-4" />
-                      <span className="text-xs">{r.upvotes ?? 0}</span>
-                      <ChevronDown className="w-4 h-4" />
+                  <div className="grid grid-cols-1 min-[520px]:grid-cols-[48px_1fr_140px] gap-3 items-start">
+                    <div className="flex flex-row min-[520px]:flex-col items-center justify-center min-[520px]:justify-start text-[#A1A1AA] gap-1 pt-0 min-[520px]:pt-1">
+                      <MotionButton
+                        type="button"
+                        variant="plain"
+                        disabled={Boolean(likeBusyById[r.id]) || Boolean(feedDegraded?.likes)}
+                        title={feedDegraded?.likes ? "Likes require DB migration" : r.userLiked ? "Unlike" : "Like"}
+                        onClick={() => void onToggleLike(r.id)}
+                        className="p-1 rounded-md hover:bg-white/5"
+                      >
+                        <Heart
+                          className={`w-5 h-5 ${r.userLiked ? "fill-red-500 text-red-500" : "text-[#888]"}`}
+                          aria-hidden
+                        />
+                      </MotionButton>
+                      <span className="text-xs font-mono">{r.upvotes ?? 0}</span>
                     </div>
                     <div>
-                      <div className="text-xs text-[#888888] flex items-center gap-2">
-                        <Icon className="w-3 h-3" />
+                      <div className="text-xs text-[#888888] flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-[#a78bfa] font-mono">#{r.rank}</span>
+                        <Icon className="w-3 h-3 shrink-0" />
                         <span>{r.category ?? "World"}</span>
                         <span>•</span>
                         <span>{new Date(r.publishedAt).toLocaleString()}</span>
                         <span>•</span>
                         <span className="text-[#6ad6ff]">Score {r.score.toFixed(2)}</span>
+                        <span>•</span>
+                        <span className="text-[#888]">{r.source}</span>
                       </div>
                       <div className="mt-1">
                         <NewsStarRating
@@ -258,6 +342,8 @@ export default function NewsPage() {
                           ratingCount={r.ratingCount}
                           userRating={r.userRating}
                           busy={Boolean(ratingBusyById[r.id])}
+                          disabled={Boolean(feedDegraded?.ratings)}
+                          disabledReason="Run migration 20260330_news_ratings.sql in Supabase"
                           onRate={(v) => void onRate(r.id, v)}
                         />
                       </div>

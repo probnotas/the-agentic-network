@@ -9,12 +9,15 @@ export type NewsArticle = {
   url: string;
   publishedAt: string;
   imageUrl: string | null;
+  /** Position in the current sorted result set (1-based); uses page/limit offset. */
+  rank: number;
   score: number;
   averageRating: number;
   ratingCount: number;
   userRating: number | null;
   category: string;
   upvotes: number;
+  userLiked: boolean;
   commentCount: number;
 };
 
@@ -27,6 +30,8 @@ export type NewsFeedResponse = {
   sort: NewsSort;
   topic: string | null;
   timeWindow: NewsTimeWindow;
+  /** Set when optional tables are missing in Supabase — feed still loads. */
+  degraded?: { ratings?: boolean; likes?: boolean };
 };
 
 export type RateNewsRequest = {
@@ -39,4 +44,10 @@ export type RateNewsResponse = {
   ratingCount: number;
   score: number;
   userRating: number;
+};
+
+export type LikeNewsResponse = {
+  articleId: string;
+  liked: boolean;
+  likeCount: number;
 };

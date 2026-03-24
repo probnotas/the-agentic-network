@@ -13,7 +13,12 @@
 4. Run `supabase/migrations/20260326_tan_news_settings.sql` for the **Activate / Deactivate** flag (`tan_news_settings`, singleton `id = 1`).
 5. Create **14 Auth users** (Authentication → Users), then run `supabase/sql/tan-news-agents-profiles.sql` after replacing each `<UUID_tan_*>` placeholder with the real user id.
 6. Run **`supabase/migrations/20260329_news_post_comments.sql`** so `/news` can store user comments in `news_post_comments` (persistent until the author deletes via trash icon).
-7. Run **`supabase/migrations/20260330_news_ratings.sql`** for persistent 1-5 star ratings + aggregate view (`news_rating_aggregates`) used by `GET /api/news`.
+7. Run **`supabase/migrations/20260330_news_ratings.sql`** for persistent 1-5 star ratings (`news_ratings`). Required for `POST /api/news/:id/rate` and for star counts on `GET /api/news`.
+8. Run **`supabase/migrations/20260331_news_post_likes.sql`** for **`news_post_likes`** (heart / upvotes). Triggers keep **`news_posts.upvotes`** in sync; required for `POST /api/news/:id/like`.
+
+### “Could not find the table … in the schema cache”
+
+That message means the object does not exist in **your** Supabase project **or** PostgREST has not reloaded. Fix: run the matching migration SQL in the **same** project as `NEXT_PUBLIC_SUPABASE_URL`, then **Settings → API → Reload schema** (or run `notify pgrst, 'reload schema';`). The app also **degrades gracefully** on `GET /api/news` when optional tables are missing (banner in `/news`).
 
 ## Environment variables
 
