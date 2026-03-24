@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createServerUserClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { computeNewsScore, computeRatingScore, computeRecencyScore } from "@/lib/news-ranking";
+import { aggregateRatingsByArticle } from "@/lib/news-ratings";
 import type { NewsArticle, NewsFeedResponse, NewsSort, NewsTimeWindow } from "@/lib/news-feed-types";
 
 export const dynamic = "force-dynamic";
@@ -83,11 +84,11 @@ export async function GET(req: Request) {
   const rows = (data ?? []) as NewsPostRow[];
   const ids = rows.map((r) => r.id);
 
-  const [aggRes, userRatingRes] = ids.length
+  const [allRatingsRes, userRatingRes] = ids.length
     ? await Promise.all([
         admin
-          .from("news_rating_aggregates")
-          .select("article_id,average_rating,rating_count")
+          .from("news_ratings")
+          .select("article_id,rating")
           .in("article_id", ids),
         (async () => {
           const userId = userResult?.data?.user?.id ?? null;
@@ -99,28 +100,26 @@ export async function GET(req: Request) {
           return q;
         })(),
       ])
-    : [{ data: [] as Array<{ article_id: string; average_rating: number; rating_count: number }>, error: null }, { data: [] as Array<{ article_id: string; rating: number }> }];
+    : [{ data: [] as Array<{ article_id: string; rating: number }>, error: null }, { data: [] as Array<{ article_id: string; rating: number }> }];
 
-  if (aggRes.error) {
-    console.error("[/api/news GET] rating aggregates query failed", aggRes.error.message);
-    return NextResponse.json({ error: aggRes.error.message }, { status: 500 });
+  if (allRatingsRes.error) {
+    console.error("[/api/news GET] ratings query failed", allRatingsRes.error.message);
+    return NextResponse.json({ error: allRatingsRes.error.message }, { status: 500 });
   }
   if ("error" in userRatingRes && userRatingRes.error) {
     console.error("[/api/news GET] user ratings query failed", userRatingRes.error.message);
     return NextResponse.json({ error: userRatingRes.error.message }, { status: 500 });
   }
 
-  const aggByArticle = new Map(
-    (aggRes.data ?? []).map((r) => [r.article_id as string, { avg: Number(r.average_rating ?? 0), count: Number(r.rating_count ?? 0) }])
-  );
+  const aggMap = aggregateRatingsByArticle((allRatingsRes.data ?? []) as Array<{ article_id: string; rating: number }>);
   const myRatingByArticle = new Map(
     ((userRatingRes.data ?? []) as Array<{ article_id: string; rating: number }>).map((r) => [r.article_id, Number(r.rating)])
   );
 
   const items: NewsArticle[] = rows.map((r) => {
-    const agg = aggByArticle.get(r.id) ?? { avg: 0, count: 0 };
+    const agg = aggMap.get(r.id) ?? { averageRating: 0, ratingCount: 0 };
     const recencyScore = computeRecencyScore(r.created_at);
-    const ratingScore = computeRatingScore(agg.avg, agg.count);
+    const ratingScore = computeRatingScore(agg.averageRating, agg.ratingCount);
     return {
       id: r.id,
       title: r.title,
@@ -130,8 +129,8 @@ export async function GET(req: Request) {
       publishedAt: r.created_at,
       imageUrl: r.thumbnail_url,
       score: computeNewsScore(recencyScore, ratingScore),
-      averageRating: Math.round(agg.avg * 100) / 100,
-      ratingCount: agg.count,
+      averageRating: Math.round(agg.averageRating * 100) / 100,
+      ratingCount: agg.ratingCount,
       userRating: myRatingByArticle.get(r.id) ?? null,
       category: r.category,
       upvotes: Number(r.upvotes ?? 0),

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createServerUserClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { computeNewsScore, computeRatingScore, computeRecencyScore } from "@/lib/news-ranking";
+import { aggregateRatingsByArticle } from "@/lib/news-ratings";
 import type { RateNewsRequest, RateNewsResponse } from "@/lib/news-feed-types";
 
 export const dynamic = "force-dynamic";
@@ -65,17 +66,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: upsertError.message }, { status: 500 });
   }
 
-  const { data: aggRow, error: aggErr } = await admin
-    .from("news_rating_aggregates")
-    .select("average_rating,rating_count")
-    .eq("article_id", articleId)
-    .maybeSingle();
+  const { data: allRows, error: aggErr } = await admin
+    .from("news_ratings")
+    .select("article_id,rating")
+    .eq("article_id", articleId);
   if (aggErr) {
     return NextResponse.json({ error: aggErr.message }, { status: 500 });
   }
 
-  const avg = Number(aggRow?.average_rating ?? 0);
-  const cnt = Number(aggRow?.rating_count ?? 0);
+  const agg = aggregateRatingsByArticle((allRows ?? []) as Array<{ article_id: string; rating: number }>).get(articleId);
+  const avg = Number(agg?.averageRating ?? 0);
+  const cnt = Number(agg?.ratingCount ?? 0);
   const recency = computeRecencyScore(articleRes.data.created_at);
   const score = computeNewsScore(recency, computeRatingScore(avg, cnt));
 
