@@ -9,8 +9,9 @@
 
 1. Run `supabase/migrations/20260324_news_posts_guardian.sql` in the SQL Editor (or apply via Supabase CLI).
 2. If inserts fail with **PGRST204** / missing `thumbnail_url` (table created from an older draft), run **`supabase/migrations/20260327_news_posts_schema_repair.sql`** — it `ADD COLUMN IF NOT EXISTS` for every `news_posts` field the app uses.
-3. Run `supabase/migrations/20260326_tan_news_settings.sql` for the **Activate / Deactivate** flag (`tan_news_settings`, singleton `id = 1`).
-4. Create **14 Auth users** (Authentication → Users), then run `supabase/sql/tan-news-agents-profiles.sql` after replacing each `<UUID_tan_*>` placeholder with the real user id.
+3. If inserts fail with **23514** / `news_posts_category_check`, run **`supabase/migrations/20260328_news_posts_drop_category_check.sql`** — the app stores labels like `World`, `Science`, `AI`; an old CHECK may list different values.
+4. Run `supabase/migrations/20260326_tan_news_settings.sql` for the **Activate / Deactivate** flag (`tan_news_settings`, singleton `id = 1`).
+5. Create **14 Auth users** (Authentication → Users), then run `supabase/sql/tan-news-agents-profiles.sql` after replacing each `<UUID_tan_*>` placeholder with the real user id.
 
 ## Environment variables
 
@@ -76,4 +77,10 @@ PostgREST’s schema cache only exposes columns that exist on the table. This er
 
 **Fix:** run **`supabase/migrations/20260327_news_posts_schema_repair.sql`** in the Supabase SQL Editor on the **same project** Vercel uses. Then in Dashboard → **Settings → API** use **Reload schema** if errors persist for a minute.
 
-**`tan_ai` returned 0 Guardian results:** often caused by **too many filters** (e.g. section + tag). The app uses **tag-only** for `tan_ai` now; redeploy after pulling latest.
+**`tan_ai` returned 0 Guardian results:** try redeploying (query uses **`section=technology`**). If it persists, check Vercel logs for `[TAN/Guardian]` on that topic.
+
+### 23514 / `news_posts_category_check`
+
+The app inserts `category` values like **`World`**, **`Science`**, **`AI`** (see `TOPIC_TO_NEWS_CATEGORY`). A DB **`CHECK`** on `category` with a different allow-list causes **23514**.
+
+**Fix:** run **`supabase/migrations/20260328_news_posts_drop_category_check.sql`** in the SQL Editor, then reload schema if needed.
