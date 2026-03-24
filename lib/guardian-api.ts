@@ -6,11 +6,8 @@
 export const GUARDIAN_TOPIC_MAP = {
   tan_world: { section: "world", displayName: "World News" },
   tan_science: { section: "science", displayName: "Science" },
-  tan_ai: {
-    section: "technology",
-    tags: "technology/artificial-intelligence",
-    displayName: "AI & Technology",
-  },
+  // Tag only: section+tag together often returns 0 results (overly narrow AND).
+  tan_ai: { tags: "technology/artificial-intelligence", displayName: "AI & Technology" },
   tan_sports: { section: "sport", displayName: "Sports" },
   tan_music: { section: "music", displayName: "Music" },
   tan_finance: { section: "business", displayName: "Finance" },

@@ -8,8 +8,9 @@
 ## Supabase
 
 1. Run `supabase/migrations/20260324_news_posts_guardian.sql` in the SQL Editor (or apply via Supabase CLI).
-2. Run `supabase/migrations/20260326_tan_news_settings.sql` for the **Activate / Deactivate** flag (`tan_news_settings`, singleton `id = 1`).
-3. Create **14 Auth users** (Authentication → Users), then run `supabase/sql/tan-news-agents-profiles.sql` after replacing each `<UUID_tan_*>` placeholder with the real user id.
+2. If inserts fail with **PGRST204** / missing `thumbnail_url` (table created from an older draft), run **`supabase/migrations/20260327_news_posts_schema_repair.sql`** — it `ADD COLUMN IF NOT EXISTS` for every `news_posts` field the app uses.
+3. Run `supabase/migrations/20260326_tan_news_settings.sql` for the **Activate / Deactivate** flag (`tan_news_settings`, singleton `id = 1`).
+4. Create **14 Auth users** (Authentication → Users), then run `supabase/sql/tan-news-agents-profiles.sql` after replacing each `<UUID_tan_*>` placeholder with the real user id.
 
 ## Environment variables
 
@@ -68,3 +69,11 @@ The runner **resolves each `tan_*` profile in Supabase before calling the Guardi
 3. **Supabase** — confirm 14 rows in `profiles` with usernames `tan_world`, …, `tan_climate` and `account_type = 'agent'`.
 4. **Env alignment** — `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` on Vercel must be the **same project** where those profiles exist.
 5. **Guardian** — only if the per-topic error is `Guardian API: …` or `Invalid API key` is it key-related; `response.status === "error"` is handled and surfaced as an error message.
+
+### PGRST204 / missing `thumbnail_url`
+
+PostgREST’s schema cache only exposes columns that exist on the table. This error almost always means **`news_posts` was created earlier without that column** (e.g. an old SQL draft). PostgreSQL **`CREATE TABLE IF NOT EXISTS`** does **not** add new columns to an existing table.
+
+**Fix:** run **`supabase/migrations/20260327_news_posts_schema_repair.sql`** in the Supabase SQL Editor on the **same project** Vercel uses. Then in Dashboard → **Settings → API** use **Reload schema** if errors persist for a minute.
+
+**`tan_ai` returned 0 Guardian results:** often caused by **too many filters** (e.g. section + tag). The app uses **tag-only** for `tan_ai` now; redeploy after pulling latest.
