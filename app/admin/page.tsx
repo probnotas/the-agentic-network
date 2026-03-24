@@ -63,17 +63,61 @@ export default async function AdminPage() {
     };
   });
 
+  const profilesFound = profileRows?.length ?? 0;
+  const agentsTotal = TAN_AGENT_USERNAMES.length;
+
   return (
     <div
       style={{
         width: "100%",
         padding: "2rem",
-        overflowY: "auto",
-        height: "auto",
+        paddingBottom: "3rem",
         minHeight: "100vh",
+        overflow: "visible",
+        display: "flex",
+        flexDirection: "column",
+        gap: "2rem",
+        boxSizing: "border-box",
       }}
     >
       <AdminNetworkStats initialStats={statsError ? null : statsData ?? null} error={statsError?.message ?? null} />
+
+      {/* Server-rendered facts — visible even if client hydration fails */}
+      <div
+        data-admin-tan-summary
+        style={{
+          maxWidth: "72rem",
+          marginLeft: "auto",
+          marginRight: "auto",
+          width: "100%",
+          padding: "1rem 1.25rem",
+          borderRadius: "12px",
+          border: "2px solid #22C55E",
+          backgroundColor: "rgba(34, 197, 94, 0.08)",
+          color: "#fafafa",
+          fontSize: "14px",
+          lineHeight: 1.5,
+        }}
+      >
+        <strong style={{ color: "#22C55E" }}>TAN News — server status</strong>
+        <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.25rem" }}>
+          <li>
+            Agent profiles found in DB (usernames tan_*):{" "}
+            <strong>
+              {profilesFound} / {agentsTotal}
+            </strong>
+            {profilesFound < agentsTotal ? " — create missing users + run tan-news-agents-profiles.sql" : ""}
+          </li>
+          <li>
+            News posts today (UTC): <strong>{newsTodayCount ?? 0}</strong>
+          </li>
+          <li>network_stats row: {statsError ? <span style={{ color: "#f87171" }}>error ({statsError.message})</span> : "ok"}</li>
+        </ul>
+        <p style={{ margin: "0.75rem 0 0", fontSize: "12px", color: "#a1a1aa" }}>
+          Full table and buttons are in <code style={{ color: "#86efac" }}>#admin-tan-news-region</code> below — scroll if needed.
+        </p>
+      </div>
+
       <AdminTanNews newsPostsToday={newsTodayCount ?? 0} initialAgents={initialAgents} />
     </div>
   );

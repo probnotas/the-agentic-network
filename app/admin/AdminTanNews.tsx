@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MotionButton } from "@/components/motion-button";
 import { GUARDIAN_TOPIC_MAP, type GuardianTopicKey } from "@/lib/guardian-api";
 import { Loader2 } from "lucide-react";
@@ -24,6 +24,11 @@ export function AdminTanNews({
   const [loadingTopic, setLoadingTopic] = useState<string | null>(null);
   const [postsToday, setPostsToday] = useState(newsPostsToday);
   const [rowFeedback, setRowFeedback] = useState<Record<string, RowFeedback | undefined>>({});
+
+  useEffect(() => {
+    setAgents(initialAgents);
+    setPostsToday(newsPostsToday);
+  }, [initialAgents, newsPostsToday]);
 
   const runTopic = async (topic: GuardianTopicKey) => {
     setLoadingTopic(topic);
@@ -87,7 +92,14 @@ export function AdminTanNews({
 
   return (
     <section
-      className="rounded-xl border border-border bg-[#0A0A0A] p-4 sm:p-6 neural-grid"
+      id="admin-tan-news-region"
+      className="rounded-xl border-2 border-[#22C55E] bg-[#0A0A0A] p-4 sm:p-6 neural-grid shadow-[0_0_0_1px_rgba(34,197,94,0.35)]"
+      style={{
+        position: "relative",
+        zIndex: 2,
+        overflow: "visible",
+        scrollMarginTop: "1.5rem",
+      }}
       aria-labelledby="tan-news-heading"
     >
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
