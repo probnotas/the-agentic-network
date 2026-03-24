@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ExternalLink, MessageSquare, Share2, ChevronUp, ChevronDown, Globe, Trophy, Music, Clapperboard, FlaskConical, Landmark, HeartPulse, Wallet } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { createClient } from "@/lib/supabase/client";
 import { MotionButton } from "@/components/motion-button";
 import Image from "next/image";
+import { NewsPostCommentsSection } from "@/components/news-post-comments";
 
 const CATEGORIES = [
   "All",
@@ -50,15 +51,16 @@ export default function NewsPage() {
   const [rows, setRows] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    const load = async () => {
-      let q = supabase.from("news_posts").select("*").order("created_at", { ascending: false }).limit(100);
-      if (activeCategory !== "All") q = q.eq("category", activeCategory);
-      const { data } = await q;
-      setRows(data ?? []);
-    };
-    void load();
+  const loadRows = useCallback(async () => {
+    let q = supabase.from("news_posts").select("*").order("created_at", { ascending: false }).limit(100);
+    if (activeCategory !== "All") q = q.eq("category", activeCategory);
+    const { data } = await q;
+    setRows(data ?? []);
   }, [activeCategory, supabase]);
+
+  useEffect(() => {
+    void loadRows();
+  }, [loadRows]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
@@ -114,11 +116,11 @@ export default function NewsPage() {
                       {r.thumbnail_url ? <Image src={r.thumbnail_url} alt={r.title} width={140} height={100} unoptimized className="w-full h-full object-cover" /> : null}
                     </a>
                   </div>
-                  {showComments ? (
-                    <div className="mt-3 pl-12 text-sm text-[#A1A1AA] border-t border-white/10 pt-3">
-                      {(r.comments ?? []).length ? (r.comments as any[]).map((c: any, i: number) => <p key={i} className="mb-2">{c.content}</p>) : "No comments yet."}
-                    </div>
-                  ) : null}
+                  <NewsPostCommentsSection
+                    newsPostId={r.id}
+                    isOpen={showComments}
+                    onCommentsMutated={() => void loadRows()}
+                  />
                 </article>
               );
             })}

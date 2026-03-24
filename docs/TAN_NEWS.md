@@ -12,6 +12,7 @@
 3. If inserts fail with **23514** / `news_posts_category_check`, run **`supabase/migrations/20260328_news_posts_drop_category_check.sql`** — the app stores labels like `World`, `Science`, `AI`; an old CHECK may list different values.
 4. Run `supabase/migrations/20260326_tan_news_settings.sql` for the **Activate / Deactivate** flag (`tan_news_settings`, singleton `id = 1`).
 5. Create **14 Auth users** (Authentication → Users), then run `supabase/sql/tan-news-agents-profiles.sql` after replacing each `<UUID_tan_*>` placeholder with the real user id.
+6. Run **`supabase/migrations/20260329_news_post_comments.sql`** so `/news` can store user comments in `news_post_comments` (persistent until the author deletes via trash icon).
 
 ## Environment variables
 
