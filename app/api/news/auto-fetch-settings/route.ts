@@ -70,7 +70,18 @@ export async function PATCH(req: Request) {
     }
 
     let seedRun:
-      | { posted: number; skipped: number }
+      | {
+          posted: number;
+          skipped: number;
+          /** Per-topic outcome so 0/0 is not mistaken for “bad API key” alone */
+          byTopic: Array<{
+            topic: string;
+            posted: number;
+            skipped: number;
+            error?: string;
+            detail?: string;
+          }>;
+        }
       | { error: string }
       | undefined;
 
@@ -84,10 +95,22 @@ export async function PATCH(req: Request) {
         try {
           console.log("[TAN/auto-fetch-settings] Activate: running initial fetch for all topics");
           const run = await runAllTopicsParallel(guardianKey);
-          seedRun = { posted: run.posted, skipped: run.skipped };
+          const byTopic = run.results.map((r) => ({
+            topic: r.topic,
+            posted: r.posted,
+            skipped: r.skipped,
+            ...(r.error ? { error: r.error, detail: r.detail } : {}),
+          }));
+          seedRun = { posted: run.posted, skipped: run.skipped, byTopic };
+          const errTopics = byTopic.filter((t) => t.error);
           console.log(
             "[TAN/auto-fetch-settings] seed run done",
-            JSON.stringify({ posted: run.posted, skipped: run.skipped })
+            JSON.stringify({
+              posted: run.posted,
+              skipped: run.skipped,
+              topicsWithErrors: errTopics.length,
+              firstError: errTopics[0]?.error ?? null,
+            })
           );
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);

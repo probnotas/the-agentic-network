@@ -11,8 +11,16 @@ export type AgentRow = {
   lastPostedAt: string | null;
 };
 
+type SeedTopicRow = {
+  topic: string;
+  posted: number;
+  skipped: number;
+  error?: string;
+  detail?: string;
+};
+
 type SeedRunResponse =
-  | { posted: number; skipped: number }
+  | { posted: number; skipped: number; byTopic?: SeedTopicRow[] }
   | { error: string }
   | undefined;
 
@@ -34,6 +42,8 @@ export function AdminTanNews({
   const [toggleBusy, setToggleBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusKind, setStatusKind] = useState<"info" | "ok" | "err">("info");
+  /** Last activate seed run — for expandable per-topic errors (avoids guessing “bad API key”). */
+  const [lastSeedByTopic, setLastSeedByTopic] = useState<SeedTopicRow[] | null>(null);
 
   useEffect(() => {
     setAgents(initialAgents);
@@ -68,6 +78,7 @@ export function AdminTanNews({
   const setToggle = async (next: boolean) => {
     setToggleBusy(true);
     setStatusMessage(null);
+    if (!next) setLastSeedByTopic(null);
     try {
       const res = await fetch("/api/news/auto-fetch-settings", {
         method: "PATCH",
@@ -95,8 +106,28 @@ export function AdminTanNews({
           setStatusKind("err");
           setStatusMessage(`Activated, but first fetch failed: ${sr.error}`);
         } else if (sr && "posted" in sr) {
-          setStatusKind("ok");
-          setStatusMessage(`Activated. First run: posted ${sr.posted}, skipped ${sr.skipped}.`);
+          const rows = sr.byTopic ?? [];
+          setLastSeedByTopic(rows.length ? rows : null);
+          const withErr = rows.filter((t) => t.error);
+          if (sr.posted === 0 && sr.skipped === 0 && withErr.length > 0) {
+            setStatusKind("err");
+            const distinct = Array.from(new Set(withErr.map((t) => t.error!)));
+            const sample = withErr.slice(0, 3).map((t) => `${t.topic}: ${t.error}`).join(" · ");
+            setStatusMessage(
+              `First run: posted 0, skipped 0 — not necessarily the Guardian key. ${withErr.length}/${rows.length} topics failed. ` +
+                (distinct.length === 1
+                  ? `All failures: ${distinct[0]}.`
+                  : `Examples: ${sample}`) +
+                ` Open Vercel → Logs for [TAN/run] / [TAN/Guardian].`
+            );
+          } else {
+            setStatusKind(sr.posted > 0 || sr.skipped > 0 ? "ok" : "info");
+            let msg = `Activated. First run: posted ${sr.posted}, skipped ${sr.skipped}.`;
+            if (withErr.length > 0) {
+              msg += ` (${withErr.length} topic(s) had errors — see Vercel logs.)`;
+            }
+            setStatusMessage(msg);
+          }
           if (sr.posted > 0) {
             setPostsToday((p) => p + sr.posted);
           }
@@ -198,6 +229,21 @@ export function AdminTanNews({
             >
               {statusMessage}
             </p>
+          ) : null}
+          {lastSeedByTopic?.some((t) => t.error) ? (
+            <details className="text-xs text-left w-full max-w-md sm:ml-auto sm:max-w-lg">
+              <summary className="cursor-pointer text-[#A1A1AA] hover:text-foreground">
+                Per-topic results (expand)
+              </summary>
+              <ul className="mt-2 space-y-1 font-mono text-[11px] text-[#A1A1AA] max-h-48 overflow-y-auto border border-border/50 rounded p-2 bg-black/30">
+                {lastSeedByTopic.map((t) => (
+                  <li key={t.topic}>
+                    <span className="text-[#22C55E]">{t.topic}</span> — posted {t.posted}, skipped {t.skipped}
+                    {t.error ? <span className="text-red-400"> — {t.error}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
           ) : null}
         </div>
       </div>

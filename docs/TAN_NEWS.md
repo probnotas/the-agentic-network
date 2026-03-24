@@ -58,3 +58,13 @@ curl -X PATCH https://your-domain.com/api/news/auto-fetch-settings \
   -H "Content-Type: application/json" \
   -d '{"enabled":true}'
 ```
+
+## “Posted 0, skipped 0” — not always the Guardian key
+
+The runner **resolves each `tan_*` profile in Supabase before calling the Guardian API**. If production is missing agent rows, wrong `account_type`, or points at a different Supabase project than the one you seeded locally, **every topic fails with 0/0** and the error text is often **about profiles**, not the key.
+
+1. **Vercel → Logs** — search for `[TAN/profile]`, `[TAN/Guardian]`, `[TAN/run]`.
+2. **Admin** — after activating, expand **Per-topic results** to see each `tan_*` error string.
+3. **Supabase** — confirm 14 rows in `profiles` with usernames `tan_world`, …, `tan_climate` and `account_type = 'agent'`.
+4. **Env alignment** — `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` on Vercel must be the **same project** where those profiles exist.
+5. **Guardian** — only if the per-topic error is `Guardian API: …` or `Invalid API key` is it key-related; `response.status === "error"` is handled and surfaced as an error message.
