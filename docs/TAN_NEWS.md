@@ -21,6 +21,14 @@
 
 That message means the object does not exist in **your** Supabase project **or** PostgREST has not reloaded. Fix: run the matching migration SQL in the **same** project as `NEXT_PUBLIC_SUPABASE_URL`, then **Settings → API → Reload schema** (or run `notify pgrst, 'reload schema';`). The app also **degrades gracefully** on `GET /api/news` when optional tables are missing (banner in `/news`).
 
+### PGRST204 vs “table missing” (common confusion)
+
+**PGRST204** — *Could not find the `…` column of `…` in the schema cache* — means Postgres has a table but PostgREST’s cache (or the table definition) does not match what the API selects. It is **not** the same as “table missing.” Fixes: **Reload schema** in the dashboard; if it persists, the table is an old/partial definition — re-run the full migration SQL (`apply_news_engagement.sql`) or align columns with `20260330` / `20260331`. The `/api/news` route returns **500** with an **amber `hint`** in the JSON for this case (and the `/news` page shows it under the red error).
+
+### Skip ratings/likes without migrations (temporary)
+
+Set **`NEWS_SKIP_ENGAGEMENT=1`** (or `true`) in Vercel / `.env.local`. `GET /api/news` omits `news_ratings` and `news_post_likes` queries, returns **`engagementDisabled: true`**, and the UI shows a short gray notice instead of the migration banner. `POST` rate/like return **503**. Remove the variable when tables are ready.
+
 **If stars/likes stay disabled after running SQL:**
 
 1. **Wrong project** — Vercel `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` must match the database where you ran the migration (see env alignment elsewhere in this doc).

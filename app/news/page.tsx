@@ -76,6 +76,8 @@ export default function NewsPage() {
   const [rows, setRows] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorHint, setErrorHint] = useState<string | null>(null);
+  const [engagementDisabled, setEngagementDisabled] = useState(false);
   const [feedDegraded, setFeedDegraded] = useState<NonNullable<NewsFeedResponse["degraded"]> | null>(null);
   const [ratingBusyById, setRatingBusyById] = useState<Record<string, boolean>>({});
   const [likeBusyById, setLikeBusyById] = useState<Record<string, boolean>>({});
@@ -94,6 +96,7 @@ export default function NewsPage() {
   const loadRows = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setErrorHint(null);
     try {
       const params = new URLSearchParams({
         page: "1",
@@ -105,19 +108,24 @@ export default function NewsPage() {
       const res = await fetch(`/api/news?${params.toString()}`, {
         headers: anonSessionId ? { "x-anon-session-id": anonSessionId } : undefined,
       });
-      const data = (await res.json()) as NewsFeedResponse & { error?: string };
+      const data = (await res.json()) as NewsFeedResponse & { error?: string; hint?: string };
       if (!res.ok) {
         setError(data.error ?? `Failed to load (${res.status})`);
+        setErrorHint(typeof data.hint === "string" ? data.hint : null);
         setRows([]);
         setFeedDegraded(null);
+        setEngagementDisabled(false);
       } else {
         setRows(data.items ?? []);
         setFeedDegraded(data.degraded ?? null);
+        setEngagementDisabled(Boolean(data.engagementDisabled));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load news");
+      setErrorHint(null);
       setRows([]);
       setFeedDegraded(null);
+      setEngagementDisabled(false);
     } finally {
       setLoading(false);
     }
@@ -128,7 +136,7 @@ export default function NewsPage() {
   }, [loadRows]);
 
   const onRate = async (articleId: string, rating: number) => {
-    if (feedDegraded?.ratings) return;
+    if (feedDegraded?.ratings || engagementDisabled) return;
 
     const prev = rows.find((r) => r.id === articleId) ?? null;
     if (!prev) return;
@@ -164,9 +172,11 @@ export default function NewsPage() {
         },
         body: JSON.stringify({ rating }),
       });
-      const data = (await res.json()) as RateNewsResponse & { error?: string };
+      const data = (await res.json()) as RateNewsResponse & { error?: string; hint?: string };
       if (!res.ok) {
-        throw new Error(data.error ?? `HTTP ${res.status}`);
+        const msg = data.error ?? `HTTP ${res.status}`;
+        if (typeof data.hint === "string") setErrorHint(data.hint);
+        throw new Error(msg);
       }
       setRows((old) =>
         old.map((r) =>
@@ -192,7 +202,7 @@ export default function NewsPage() {
   };
 
   const onToggleLike = async (articleId: string) => {
-    if (feedDegraded?.likes) return;
+    if (feedDegraded?.likes || engagementDisabled) return;
     if (!anonSessionId && !user) {
       setError("Sign in (or allow site storage) to like posts.");
       return;
@@ -210,9 +220,11 @@ export default function NewsPage() {
         method: "POST",
         headers: anonSessionId ? { "x-anon-session-id": anonSessionId } : undefined,
       });
-      const data = (await res.json()) as LikeNewsResponse & { error?: string };
+      const data = (await res.json()) as LikeNewsResponse & { error?: string; hint?: string };
       if (!res.ok) {
-        throw new Error(data.error ?? `HTTP ${res.status}`);
+        const msg = data.error ?? `HTTP ${res.status}`;
+        if (typeof data.hint === "string") setErrorHint(data.hint);
+        throw new Error(msg);
       }
       setRows((old) =>
         old.map((r) => (r.id === articleId ? { ...r, userLiked: data.liked, upvotes: data.likeCount } : r))
@@ -275,16 +287,32 @@ export default function NewsPage() {
             fetches, use <strong className="text-[#888]">Vercel Pro</strong> and change the <code className="text-[#888]">schedule</code>{" "}
             in <code className="text-[#888]">vercel.json</code> (e.g. <code className="text-[#888]">0 * * * *</code>).
           </p>
-          {error ? <p className="text-xs text-red-400 mb-4">{error}</p> : null}
+          {error ? (
+            <div className="mb-4">
+              <p className="text-xs text-red-400">{error}</p>
+              {errorHint ? (
+                <p className="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mt-2">
+                  {errorHint}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {engagementDisabled ? (
+            <p className="text-xs text-[#888] mb-4 leading-relaxed">
+              Star ratings and likes are disabled on the server (<code className="text-[#aaa]">NEWS_SKIP_ENGAGEMENT=1</code>). The feed
+              still loads. Unset that env on Vercel and redeploy to use Supabase tables again.
+            </p>
+          ) : null}
           {feedDegraded?.ratings || feedDegraded?.likes ? (
             <div className="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-4">
               {feedDegraded.ratings ? (
                 <p>
                   Star ratings need the <code className="text-amber-100">news_ratings</code> table. In Supabase → SQL Editor, run{" "}
-                  <code className="text-amber-100">supabase/migrations/20260330_news_ratings.sql</code> (or the combined{" "}
-                  <code className="text-amber-100">supabase/sql/apply_news_engagement.sql</code> for stars and likes). Each migration
-                  ends with <code className="text-amber-100">notify pgrst, &apos;reload schema&apos;</code>; if the banner stays, use
-                  Settings → API → Reload schema, then refresh this page. Confirm Vercel env points at this same project.
+                  <code className="text-amber-100">supabase/migrations/20260330_news_ratings.sql</code> (or{" "}
+                  <code className="text-amber-100">supabase/sql/apply_news_engagement.sql</code> for stars and likes). Migrations call{" "}
+                  <code className="text-amber-100">notify pgrst, &apos;reload schema&apos;</code>; if needed, also use Settings → API →
+                  Reload schema. Confirm Vercel env targets this project. If the table already exists but the page shows a red error
+                  instead, that is usually a stale schema cache or a missing column (PGRST204)—follow the amber hint under the error.
                 </p>
               ) : null}
               {feedDegraded.likes ? (
@@ -347,8 +375,12 @@ export default function NewsPage() {
                           ratingCount={r.ratingCount}
                           userRating={r.userRating}
                           busy={Boolean(ratingBusyById[r.id])}
-                          disabled={Boolean(feedDegraded?.ratings)}
-                          disabledReason="Run 20260330_news_ratings.sql or supabase/sql/apply_news_engagement.sql in Supabase"
+                          disabled={Boolean(feedDegraded?.ratings) || engagementDisabled}
+                          disabledReason={
+                            engagementDisabled
+                              ? "Server has NEWS_SKIP_ENGAGEMENT enabled"
+                              : "Run 20260330_news_ratings.sql or supabase/sql/apply_news_engagement.sql in Supabase"
+                          }
                           onRate={(v) => void onRate(r.id, v)}
                         />
                       </div>

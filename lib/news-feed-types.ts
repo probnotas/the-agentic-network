@@ -32,6 +32,8 @@ export type NewsFeedResponse = {
   timeWindow: NewsTimeWindow;
   /** Set when optional tables are missing in Supabase — feed still loads. */
   degraded?: { ratings?: boolean; likes?: boolean };
+  /** When true, server skipped rating/like queries (NEWS_SKIP_ENGAGEMENT) — no migration banner. */
+  engagementDisabled?: boolean;
 };
 
 export type RateNewsRequest = {

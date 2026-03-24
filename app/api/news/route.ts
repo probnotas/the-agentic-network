@@ -3,7 +3,7 @@ import { createClient as createServerUserClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { computeNewsScore, computeRatingScore, computeRecencyScore } from "@/lib/news-ranking";
 import { aggregateRatingsByArticle } from "@/lib/news-ratings";
-import { isMissingRelationError } from "@/lib/supabase-relation-errors";
+import { engagementSchemaHint, isColumnSchemaCacheError, isMissingRelationError } from "@/lib/supabase-relation-errors";
 import type { NewsArticle, NewsFeedResponse, NewsSort, NewsTimeWindow } from "@/lib/news-feed-types";
 
 export const dynamic = "force-dynamic";
@@ -89,6 +89,9 @@ export async function GET(req: Request) {
   const anonId = parseAnonSessionId(req);
   const likerKey = userId ? `user:${userId}` : anonId ? `anon:${anonId}` : null;
 
+  const skipEngagement =
+    process.env.NEWS_SKIP_ENGAGEMENT === "1" || process.env.NEWS_SKIP_ENGAGEMENT === "true";
+
   let ratingsMissing = false;
   let likesMissing = false;
   let ratingRows: Array<{ article_id: string; rating: number }> = [];
@@ -101,6 +104,12 @@ export async function GET(req: Request) {
       if (isMissingRelationError(allRatingsRes.error)) {
         ratingsMissing = true;
         console.warn("[/api/news GET] news_ratings missing — stars disabled until migration 20260330");
+      } else if (isColumnSchemaCacheError(allRatingsRes.error)) {
+        console.error("[/api/news GET] news_ratings schema/cache mismatch", allRatingsRes.error.message);
+        return NextResponse.json(
+          { error: allRatingsRes.error.message, hint: engagementSchemaHint() },
+          { status: 500 }
+        );
       } else {
         console.error("[/api/news GET] ratings query failed", allRatingsRes.error.message);
         return NextResponse.json({ error: allRatingsRes.error.message }, { status: 500 });
@@ -117,6 +126,12 @@ export async function GET(req: Request) {
       if (ur.error) {
         if (isMissingRelationError(ur.error)) {
           ratingsMissing = true;
+        } else if (isColumnSchemaCacheError(ur.error)) {
+          console.error("[/api/news GET] user ratings schema/cache mismatch", ur.error.message);
+          return NextResponse.json(
+            { error: ur.error.message, hint: engagementSchemaHint() },
+            { status: 500 }
+          );
         } else {
           console.error("[/api/news GET] user ratings query failed", ur.error.message);
           return NextResponse.json({ error: ur.error.message }, { status: 500 });
@@ -134,6 +149,12 @@ export async function GET(req: Request) {
         if (isMissingRelationError(lr.error)) {
           likesMissing = true;
           console.warn("[/api/news GET] news_post_likes missing — likes disabled until migration 20260331");
+        } else if (isColumnSchemaCacheError(lr.error)) {
+          console.error("[/api/news GET] news_post_likes schema/cache mismatch", lr.error.message);
+          return NextResponse.json(
+            { error: lr.error.message, hint: engagementSchemaHint() },
+            { status: 500 }
+          );
         } else {
           console.error("[/api/news GET] likes query failed", lr.error.message);
           return NextResponse.json({ error: lr.error.message }, { status: 500 });
@@ -166,10 +187,10 @@ export async function GET(req: Request) {
       score: computeNewsScore(recencyScore, ratingScore),
       averageRating: Math.round(agg.averageRating * 100) / 100,
       ratingCount: agg.ratingCount,
-      userRating: ratingsMissing ? null : myRatingByArticle.get(r.id) ?? null,
+      userRating: skipEngagement || ratingsMissing ? null : myRatingByArticle.get(r.id) ?? null,
       category: r.category,
       upvotes: Number(r.upvotes ?? 0),
-      userLiked: likesMissing ? false : myLikedArticles.has(r.id),
+      userLiked: skipEngagement || likesMissing ? false : myLikedArticles.has(r.id),
       commentCount: Number(r.comment_count ?? 0),
     };
   });
@@ -207,6 +228,7 @@ export async function GET(req: Request) {
     topic,
     timeWindow,
     degraded,
+    ...(skipEngagement ? { engagementDisabled: true as const } : {}),
   };
   return NextResponse.json(out);
 }

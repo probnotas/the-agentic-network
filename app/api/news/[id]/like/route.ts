@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createServerUserClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { isMissingRelationError } from "@/lib/supabase-relation-errors";
+import { engagementSchemaHint, isColumnSchemaCacheError, isMissingRelationError } from "@/lib/supabase-relation-errors";
 import type { LikeNewsResponse } from "@/lib/news-feed-types";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +13,13 @@ function parseAnonSessionId(req: Request): string | null {
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  if (process.env.NEWS_SKIP_ENGAGEMENT === "1" || process.env.NEWS_SKIP_ENGAGEMENT === "true") {
+    return NextResponse.json(
+      { error: "Likes are disabled on this deployment (NEWS_SKIP_ENGAGEMENT)." },
+      { status: 503 }
+    );
+  }
+
   const articleId = params.id;
 
   const [userRes, articleRes] = await Promise.all([
@@ -57,6 +64,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         { status: 503 }
       );
     }
+    if (isColumnSchemaCacheError(selErr)) {
+      return NextResponse.json({ error: selErr.message, hint: engagementSchemaHint() }, { status: 500 });
+    }
     return NextResponse.json({ error: selErr.message }, { status: 500 });
   }
 
@@ -72,6 +82,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       if (isMissingRelationError(delErr)) {
         return NextResponse.json({ error: "news_post_likes table missing (see migration 20260331)." }, { status: 503 });
       }
+      if (isColumnSchemaCacheError(delErr)) {
+        return NextResponse.json({ error: delErr.message, hint: engagementSchemaHint() }, { status: 500 });
+      }
       return NextResponse.json({ error: delErr.message }, { status: 500 });
     }
   } else {
@@ -84,6 +97,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (insErr) {
       if (isMissingRelationError(insErr)) {
         return NextResponse.json({ error: "news_post_likes table missing (see migration 20260331)." }, { status: 503 });
+      }
+      if (isColumnSchemaCacheError(insErr)) {
+        return NextResponse.json({ error: insErr.message, hint: engagementSchemaHint() }, { status: 500 });
       }
       return NextResponse.json({ error: insErr.message }, { status: 500 });
     }

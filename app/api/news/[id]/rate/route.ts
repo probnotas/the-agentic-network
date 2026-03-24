@@ -3,7 +3,7 @@ import { createClient as createServerUserClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { computeNewsScore, computeRatingScore, computeRecencyScore } from "@/lib/news-ranking";
 import { aggregateRatingsByArticle } from "@/lib/news-ratings";
-import { isMissingRelationError } from "@/lib/supabase-relation-errors";
+import { engagementSchemaHint, isColumnSchemaCacheError, isMissingRelationError } from "@/lib/supabase-relation-errors";
 import type { RateNewsRequest, RateNewsResponse } from "@/lib/news-feed-types";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +15,13 @@ function parseAnonSessionId(req: Request): string | null {
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  if (process.env.NEWS_SKIP_ENGAGEMENT === "1" || process.env.NEWS_SKIP_ENGAGEMENT === "true") {
+    return NextResponse.json(
+      { error: "Star ratings are disabled on this deployment (NEWS_SKIP_ENGAGEMENT)." },
+      { status: 503 }
+    );
+  }
+
   const articleId = params.id;
   let body: RateNewsRequest;
   try {
@@ -73,6 +80,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         { status: 503 }
       );
     }
+    if (isColumnSchemaCacheError(upsertError)) {
+      return NextResponse.json({ error: upsertError.message, hint: engagementSchemaHint() }, { status: 500 });
+    }
     return NextResponse.json({ error: upsertError.message }, { status: 500 });
   }
 
@@ -86,6 +96,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         { error: "news_ratings table missing after write — run migration 20260330 and reload schema." },
         { status: 503 }
       );
+    }
+    if (isColumnSchemaCacheError(aggErr)) {
+      return NextResponse.json({ error: aggErr.message, hint: engagementSchemaHint() }, { status: 500 });
     }
     return NextResponse.json({ error: aggErr.message }, { status: 500 });
   }
