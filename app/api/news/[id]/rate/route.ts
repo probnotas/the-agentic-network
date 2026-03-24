@@ -1,0 +1,90 @@
+import { NextResponse } from "next/server";
+import { createClient as createServerUserClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service";
+import { computeNewsScore, computeRatingScore, computeRecencyScore } from "@/lib/news-ranking";
+import type { RateNewsRequest, RateNewsResponse } from "@/lib/news-feed-types";
+
+export const dynamic = "force-dynamic";
+
+function parseAnonSessionId(req: Request): string | null {
+  const header = req.headers.get("x-anon-session-id")?.trim();
+  if (!header) return null;
+  return header.slice(0, 120);
+}
+
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const articleId = params.id;
+  let body: RateNewsRequest;
+  try {
+    body = (await req.json()) as RateNewsRequest;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const rating = Number(body.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return NextResponse.json({ error: "rating must be an integer between 1 and 5" }, { status: 400 });
+  }
+
+  const [userRes, articleRes] = await Promise.all([
+    createServerUserClient().then((supa) => supa.auth.getUser()).catch(() => ({ data: { user: null } })),
+    createServiceRoleClient()
+      .from("news_posts")
+      .select("id,created_at")
+      .eq("id", articleId)
+      .maybeSingle(),
+  ]);
+  if (articleRes.error) {
+    return NextResponse.json({ error: articleRes.error.message }, { status: 500 });
+  }
+  if (!articleRes.data) {
+    return NextResponse.json({ error: "Article not found" }, { status: 404 });
+  }
+
+  const userId = userRes?.data?.user?.id ?? null;
+  const anonSessionId = parseAnonSessionId(req);
+  if (!userId && !anonSessionId) {
+    return NextResponse.json({ error: "Sign in or provide anon session id to rate" }, { status: 401 });
+  }
+
+  const raterKey = userId ? `user:${userId}` : `anon:${anonSessionId}`;
+  const admin = createServiceRoleClient();
+  const { error: upsertError } = await admin.from("news_ratings").upsert(
+    {
+      article_id: articleId,
+      user_id: userId,
+      anon_session_id: userId ? null : anonSessionId,
+      rater_key: raterKey,
+      rating,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "article_id,rater_key" }
+  );
+  if (upsertError) {
+    console.error("[/api/news/:id/rate POST] upsert failed", upsertError.message);
+    return NextResponse.json({ error: upsertError.message }, { status: 500 });
+  }
+
+  const { data: aggRow, error: aggErr } = await admin
+    .from("news_rating_aggregates")
+    .select("average_rating,rating_count")
+    .eq("article_id", articleId)
+    .maybeSingle();
+  if (aggErr) {
+    return NextResponse.json({ error: aggErr.message }, { status: 500 });
+  }
+
+  const avg = Number(aggRow?.average_rating ?? 0);
+  const cnt = Number(aggRow?.rating_count ?? 0);
+  const recency = computeRecencyScore(articleRes.data.created_at);
+  const score = computeNewsScore(recency, computeRatingScore(avg, cnt));
+
+  const out: RateNewsResponse = {
+    articleId,
+    averageRating: Math.round(avg * 100) / 100,
+    ratingCount: cnt,
+    score,
+    userRating: rating,
+  };
+  return NextResponse.json(out);
+}
