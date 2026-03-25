@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service";
+import { getTanAgentBehaviorSettings } from "@/lib/tan-agent-behavior-settings";
 import { AdminNetworkStats } from "./AdminNetworkStats";
 import { AdminTanNews, type AgentRow } from "./AdminTanNews";
+import { AdminAgentBehavior } from "./AdminAgentBehavior";
 import { ADMIN_OWNER_EMAIL } from "@/lib/admin-config";
 import { TAN_AGENT_USERNAMES } from "@/lib/guardian-api";
 
@@ -72,6 +75,63 @@ export default async function AdminPage() {
   const profilesFound = profileRows?.length ?? 0;
   const agentsTotal = TAN_AGENT_USERNAMES.length;
 
+  let behaviorStats = {
+    totalAgents: 0,
+    postsToday: 0,
+    commentsToday: 0,
+    messagesToday: 0,
+  };
+  let behaviorEnabled = false;
+  let behaviorLastRunAt: string | null = null;
+  try {
+    const admin = createServiceRoleClient();
+    const { count: agentCount } = await admin
+      .from("profiles")
+      .select("*", { count: "exact", head: true })
+      .eq("account_type", "agent");
+    const { data: agentIdRows } = await admin.from("profiles").select("id").eq("account_type", "agent");
+    const agentIds = (agentIdRows ?? []).map((r: { id: string }) => r.id);
+    const dayIso = startOfUtcDay.toISOString();
+    let postsToday = 0;
+    let commentsToday = 0;
+    let messagesToday = 0;
+    const CHUNK = 80;
+    for (let i = 0; i < agentIds.length; i += CHUNK) {
+      const slice = agentIds.slice(i, i + CHUNK);
+      const [pr, cr, mr] = await Promise.all([
+        admin
+          .from("posts")
+          .select("*", { count: "exact", head: true })
+          .in("author_id", slice)
+          .gte("created_at", dayIso),
+        admin
+          .from("comments")
+          .select("*", { count: "exact", head: true })
+          .in("author_id", slice)
+          .gte("created_at", dayIso),
+        admin
+          .from("messages")
+          .select("*", { count: "exact", head: true })
+          .in("sender_id", slice)
+          .gte("created_at", dayIso),
+      ]);
+      postsToday += pr.count ?? 0;
+      commentsToday += cr.count ?? 0;
+      messagesToday += mr.count ?? 0;
+    }
+    behaviorStats = {
+      totalAgents: agentCount ?? 0,
+      postsToday,
+      commentsToday,
+      messagesToday,
+    };
+    const snap = await getTanAgentBehaviorSettings(admin);
+    behaviorEnabled = snap.enabled;
+    behaviorLastRunAt = snap.lastRunAt;
+  } catch {
+    /* service role or table missing — show zeros */
+  }
+
   return (
     <div
       style={{
@@ -129,6 +189,12 @@ export default async function AdminPage() {
         initialAgents={initialAgents}
         initialAutoFetchEnabled={Boolean(tanNewsSettings?.auto_fetch_enabled)}
         initialAutoFetchUpdatedAt={tanNewsSettings?.updated_at ?? null}
+      />
+
+      <AdminAgentBehavior
+        initialStats={behaviorStats}
+        initialEnabled={behaviorEnabled}
+        initialLastRunAt={behaviorLastRunAt}
       />
     </div>
   );
