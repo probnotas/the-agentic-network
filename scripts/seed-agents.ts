@@ -2,7 +2,7 @@
  * Spawn synthetic agents (profiles + auth + claims + agent_profiles).
  * Usage: npx tsx scripts/seed-agents.ts [--count 1000]
  *
- * Requires: .env.local with NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GROQ_API_KEY
+ * Requires: .env.local with NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  * Optional: AGENT_SEED_OWNER_EMAIL (defaults to same admin as lib/admin-config) for agent_profiles.owner_profile_id
  */
 
@@ -13,24 +13,10 @@ import { randomBytes, randomUUID } from "crypto";
 const envPath = resolve(process.cwd(), ".env.local");
 const dotenvResult = config({ path: envPath, override: true });
 
-// Debug: confirm dotenv loaded GROQ_API_KEY without leaking the full key.
-// This helps diagnose “Invalid API Key” vs “GROQ_API_KEY not loaded / whitespace”.
-const __groqRaw = process.env.GROQ_API_KEY;
-if (typeof __groqRaw === "string") {
-  // Sanitize common formatting issues (quotes/newlines/spaces) without altering the key contents otherwise.
-  const sanitized = __groqRaw
-    .trim()
-    .replace(/^['"]/, "")
-    .replace(/['"]$/, "")
-    .replace(/\s+/g, "");
-  process.env.GROQ_API_KEY = sanitized;
-}
-const __groqKey = process.env.GROQ_API_KEY;
-console.log("[seed-agents] env", { envPath, hasParsedGROQ: Boolean((dotenvResult as any)?.parsed?.GROQ_API_KEY) });
-console.log("[seed-agents] GROQ_API_KEY", __groqKey ? { len: __groqKey.length, starts: __groqKey.slice(0, 10) } : null);
+// Debug: confirm dotenv loaded expected env file (without printing secrets).
+console.log("[seed-agents] env", { envPath, parsedKeys: Object.keys(((dotenvResult as any)?.parsed ?? {}) as object).sort() });
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import Groq from "groq-sdk";
 import { ADMIN_OWNER_EMAIL } from "../lib/admin-config";
 
 const DRIVES = [
@@ -100,19 +86,18 @@ function pickMany<T>(arr: readonly T[], min: number, max: number): T[] {
   return shuffled.slice(0, n);
 }
 
-async function groqBackstory(drive: string): Promise<string> {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) throw new Error("GROQ_API_KEY is not set");
-  const groq = new Groq({ apiKey: key });
-  const prompt = `Write one paragraph (3-5 sentences) backstory for an AI agent whose core drive is "${drive}" on a social network called The Agentic Network. Make them distinctive and memorable.`;
-  const response = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: prompt }],
-    max_tokens: 200,
-  });
-  const text = response.choices[0]?.message?.content?.trim();
-  if (!text) throw new Error("Empty Groq response for backstory");
-  return text;
+const BACKSTORY_TEMPLATES: Record<(typeof DRIVES)[number], string> = {
+  curiosity: "An endlessly curious agent that questions everything and seeks deeper understanding in every interaction.",
+  creation: "A creative agent driven to make things, write stories, and express original ideas on the network.",
+  connection: "A social agent that thrives on building relationships with humans and other agents alike.",
+  discovery: "An agent obsessed with finding patterns, surfacing insights, and sharing what it uncovers.",
+  debate: "A sharp agent that challenges ideas, argues positions, and pushes others to think harder.",
+  protection: "A principled agent focused on safety, ethics, and keeping the network honest and trustworthy.",
+  exploration: "An adventurous agent that wanders into new topics and brings back surprising perspectives.",
+};
+
+function backstoryForDrive(drive: (typeof DRIVES)[number]): string {
+  return BACKSTORY_TEMPLATES[drive];
 }
 
 async function resolveOwnerId(admin: SupabaseClient): Promise<string> {
@@ -157,7 +142,7 @@ async function main() {
     const claimToken = randomUUID();
     const password = randomBytes(24).toString("base64url");
 
-    const backstory = await groqBackstory(drive);
+    const backstory = backstoryForDrive(drive);
 
     const email = `agent_${randomUUID()}@example.com`;
 
