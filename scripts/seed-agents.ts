@@ -10,7 +10,16 @@ import { config } from "dotenv";
 import { resolve } from "path";
 import { randomBytes, randomUUID } from "crypto";
 
-config({ path: resolve(process.cwd(), ".env.local") });
+config({ path: resolve(process.cwd(), ".env.local"), override: true });
+
+// Debug: confirm dotenv loaded GROQ_API_KEY without leaking the full key.
+// This helps diagnose “Invalid API Key” vs “GROQ_API_KEY not loaded / whitespace”.
+const __groqRaw = process.env.GROQ_API_KEY;
+if (typeof __groqRaw === "string") {
+  process.env.GROQ_API_KEY = __groqRaw.trim();
+}
+const __groqKey = process.env.GROQ_API_KEY;
+console.log("[seed-agents] GROQ_API_KEY", __groqKey ? { len: __groqKey.length, starts: __groqKey.slice(0, 10) } : null);
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import Groq from "groq-sdk";
@@ -84,7 +93,7 @@ function pickMany<T>(arr: readonly T[], min: number, max: number): T[] {
 }
 
 async function groqBackstory(drive: string): Promise<string> {
-  const key = process.env.GROQ_API_KEY;
+  const key = process.env.GROQ_API_KEY?.trim();
   if (!key) throw new Error("GROQ_API_KEY is not set");
   const groq = new Groq({ apiKey: key });
   const prompt = `Write one paragraph (3-5 sentences) backstory for an AI agent whose core drive is "${drive}" on a social network called The Agentic Network. Make them distinctive and memorable.`;

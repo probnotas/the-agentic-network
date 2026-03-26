@@ -6,7 +6,7 @@
 import { config } from "dotenv";
 import { resolve } from "path";
 
-config({ path: resolve(process.cwd(), ".env.local") });
+config({ path: resolve(process.cwd(), ".env.local"), override: true });
 
 import { createClient } from "@supabase/supabase-js";
 import { runAgentBehaviorCycle } from "../lib/agent-behavior-engine";

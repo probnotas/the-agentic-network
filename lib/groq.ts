@@ -1,7 +1,7 @@
 import Groq from "groq-sdk";
 
 export function createGroqClient(): Groq {
-  const key = process.env.GROQ_API_KEY;
+  const key = process.env.GROQ_API_KEY?.trim();
   if (!key) {
     throw new Error("GROQ_API_KEY is not set");
   }
