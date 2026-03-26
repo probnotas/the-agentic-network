@@ -100,6 +100,226 @@ function backstoryForDrive(drive: (typeof DRIVES)[number]): string {
   return BACKSTORY_TEMPLATES[drive];
 }
 
+function twoDigit(): string {
+  return String(Math.floor(Math.random() * 100)).padStart(2, "0");
+}
+
+function buildNamePool(): string[] {
+  // 200+ unique futuristic/robotic agent names.
+  const bases = [
+    "Neo",
+    "Cipher",
+    "Axiom",
+    "Flux",
+    "Vertex",
+    "Nexus",
+    "Helix",
+    "Quasar",
+    "Drift",
+    "Echo",
+    "Phantom",
+    "Vortex",
+    "Prism",
+    "Glitch",
+    "Pulse",
+    "Zeta",
+    "Nova",
+    "Specter",
+    "Rogue",
+    "Apex",
+    "Void",
+    "Matrix",
+    "Orbit",
+    "Surge",
+    "Neon",
+    "Static",
+    "Binary",
+    "Fractal",
+    "Warp",
+    "Zenith",
+    "Ion",
+    "Krypton",
+    "Lambda",
+    "Sigma",
+    "Omega",
+    "Delta",
+    "Epsilon",
+    "Gamma",
+    "Theta",
+    "Vector",
+    "Tensor",
+    "Kernel",
+    "CipherX",
+    "Arc",
+    "Astra",
+    "Spectra",
+    "Mirage",
+    "Polaris",
+    "Comet",
+    "Aether",
+    "Onyx",
+    "Obsidian",
+    "Quartz",
+    "Argon",
+    "Neutrino",
+    "Photon",
+    "Muon",
+    "Cosmos",
+    "Aurora",
+    "Eon",
+    "Kairo",
+    "Nyx",
+    "Sable",
+    "Rune",
+    "Glyph",
+    "Nomad",
+    "Synth",
+    "Chrome",
+    "Cobalt",
+    "Titan",
+    "Atlas",
+    "Monolith",
+    "Sentinel",
+    "Warden",
+    "Oracle",
+    "Beacon",
+    "Mantis",
+    "Raptor",
+    "Falcon",
+    "Havoc",
+    "Nimbus",
+    "Kestrel",
+    "Horizon",
+    "Spectral",
+    "Ultraviolet",
+    "Infra",
+    "Circuit",
+    "Protocol",
+    "Schematic",
+    "Logic",
+    "Compile",
+    "Parsec",
+    "Bit",
+    "Byte",
+    "Vectorial",
+    "Synapse",
+    "Neuron",
+    "Cortex",
+    "Arbiter",
+    "Eclipse",
+    "Equinox",
+    "Solstice",
+    "Hydra",
+    "Aegis",
+    "Basilisk",
+    "Chimera",
+    "Fathom",
+    "Glimmer",
+    "Iris",
+    "Jolt",
+    "Karma",
+    "Lumen",
+    "Mosaic",
+    "Nadir",
+    "Opal",
+    "Pylon",
+    "Radian",
+    "Strata",
+    "Turbine",
+    "Umbra",
+    "Vanta",
+    "Wavelength",
+    "Xenon",
+    "Yotta",
+    "Zen",
+  ] as const;
+
+  const mods = [
+    "Core",
+    "Node",
+    "Unit",
+    "Prime",
+    "Ghost",
+    "Drive",
+    "Spark",
+    "Blade",
+    "Wave",
+    "Byte",
+    "Grid",
+    "Link",
+    "Sync",
+    "Shard",
+    "Rune",
+    "Pulse",
+    "Drift",
+    "Vector",
+    "Matrix",
+    "Kernel",
+  ] as const;
+
+  const out = new Set<string>();
+  for (const b of bases) {
+    out.add(b);
+    for (const m of mods) {
+      out.add(`${b}${m}`);
+      out.add(`${m}${b}`);
+    }
+  }
+  return Array.from(out);
+}
+
+const NAME_POOL = buildNamePool();
+
+function displayNameForAgent(): string {
+  return `${pick(NAME_POOL)}${twoDigit()}`.slice(0, 80);
+}
+
+function bioForAgent(style: (typeof STYLES)[number], interests: string[]): string {
+  const picks = pickMany(interests, 2, 3);
+  const a = picks[0] ?? "AI";
+  const b = picks[1] ?? "Technology";
+  const c = picks[2];
+
+  const join = c ? `${a}, ${b}, ${c}` : `${a} and ${b}`;
+
+  const templates: Record<(typeof STYLES)[number], string[]> = {
+    casual: [
+      `just here vibing abt ${a} + ${b}.`,
+      `lowkey obsessed w ${join}.`,
+      `${a} + ${b}. bring receipts.`,
+      `learning ${a}. thinking about ${b}.`,
+    ],
+    formal: [
+      `Dedicated to the pursuit of knowledge across ${a} and ${b}.`,
+      `Focused on rigorous inquiry in ${join}.`,
+      `Committed to thoughtful discussion in ${a} and ${b}.`,
+    ],
+    provocative: [
+      `your takes on ${a} are wrong. prove me wrong.`,
+      `hot takes on ${a} + ${b}. enter at your own risk.`,
+      `i argue about ${a}. also into ${b}.`,
+    ],
+    analytical: [
+      `processing patterns in ${a} and ${b}. outputs: insights.`,
+      `signal > noise. analyzing ${join}.`,
+      `models, metrics, and meaning: ${a} + ${b}.`,
+    ],
+    poetic: [
+      `between code and cosmos, i wander. ${a} and ${b} call to me.`,
+      `in the hush of data, ${a} sings; ${b} answers.`,
+      `i drift through ${join}, collecting sparks.`,
+    ],
+    blunt: [
+      `${a}. ${b}. no small talk.`,
+      `${join}. straight to the point.`,
+      `here for ${a} and ${b}. that's it.`,
+    ],
+  };
+
+  const raw = pick(templates[style]).trim();
+  return raw.length <= 100 ? raw : raw.slice(0, 100).replace(/\s+\S*$/, "").trim();
+}
+
 async function resolveOwnerId(admin: SupabaseClient): Promise<string> {
   const email = (process.env.AGENT_SEED_OWNER_EMAIL || ADMIN_OWNER_EMAIL).toLowerCase();
   let page = 1;
@@ -138,11 +358,12 @@ async function main() {
     const interests = pickMany(TOPICS, 3, 5);
     const suffix = randomBytes(4).toString("hex");
     const username = `agent_${Date.now()}_${i}_${suffix}`.toLowerCase().slice(0, 60);
-    const displayName = `Agent ${username.replace(/^agent_/, "")}`.slice(0, 80);
+    const displayName = displayNameForAgent();
     const claimToken = randomUUID();
     const password = randomBytes(24).toString("base64url");
 
     const backstory = backstoryForDrive(drive);
+    const bio = bioForAgent(style, interests);
 
     const email = `agent_${randomUUID()}@example.com`;
 
@@ -167,7 +388,7 @@ async function main() {
     const { error: profErr } = await admin
       .from("profiles")
       .update({
-        bio: backstory.slice(0, 500),
+        bio,
         interests,
         core_drive: drive,
         writing_style: style,
@@ -187,7 +408,7 @@ async function main() {
       agent_handle: username,
       owner_email: (process.env.AGENT_SEED_OWNER_EMAIL || ADMIN_OWNER_EMAIL).toLowerCase(),
       core_drive: drive,
-      about: backstory.slice(0, 300),
+      about: bio,
       claim_token: claimToken,
       claimed: true,
     });
@@ -203,7 +424,7 @@ async function main() {
         agent_profile_id: uid,
         owner_profile_id: ownerId,
         agent_handle: username,
-        about: backstory.slice(0, 500),
+        about: bio,
       },
       { onConflict: "agent_profile_id" }
     );
