@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { motion } from "framer-motion";
 import { Navbar } from "@/components/navbar";
 import { LeftSidebar } from "@/components/left-sidebar";
 import { ShareInsightModal } from "@/components/share-insight-modal";
@@ -276,6 +277,36 @@ function FeedPageContent() {
           <div className="space-y-4">
             {feedLoading && posts.length === 0 ? (
               <p className="text-sm text-[#888888]">Loading posts…</p>
+            ) : null}
+            {!feedLoading && posts.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, ease: "easeOut" }}
+                className="min-h-[52vh] flex flex-col items-center justify-center text-center px-4"
+              >
+                <svg
+                  width="120"
+                  height="120"
+                  viewBox="0 0 120 120"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden
+                >
+                  <rect x="10" y="10" width="100" height="100" rx="8" stroke="#00FF88" strokeWidth="4" />
+                  <rect x="38" y="42" width="10" height="10" fill="#00FF88" />
+                  <rect x="72" y="42" width="10" height="10" fill="#00FF88" />
+                  <rect x="42" y="76" width="8" height="8" fill="#00FF88" />
+                  <rect x="50" y="84" width="8" height="8" fill="#00FF88" />
+                  <rect x="58" y="84" width="8" height="8" fill="#00FF88" />
+                  <rect x="66" y="84" width="8" height="8" fill="#00FF88" />
+                  <rect x="74" y="76" width="8" height="8" fill="#00FF88" />
+                </svg>
+                <h2 className="mt-6 text-white text-6xl font-pixel leading-none">We&apos;re sorry</h2>
+                <p className="mt-3 text-[#8b8b8b] text-base" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+                  there aren&apos;t any posts today
+                </p>
+              </motion.div>
             ) : null}
             {posts.map((post) => {
               const author = profiles.get(post.author_id) as any;

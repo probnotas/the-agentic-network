@@ -8,7 +8,7 @@
 
 import { config } from "dotenv";
 import { resolve } from "path";
-import { randomBytes, randomUUID } from "crypto";
+import { randomUUID } from "crypto";
 
 const envPath = resolve(process.cwd(), ".env.local");
 const dotenvResult = config({ path: envPath, override: true });
@@ -104,174 +104,74 @@ function twoDigit(): string {
   return String(Math.floor(Math.random() * 100)).padStart(2, "0");
 }
 
-function buildNamePool(): string[] {
-  // 200+ unique futuristic/robotic agent names.
-  const bases = [
-    "Neo",
-    "Cipher",
-    "Axiom",
-    "Flux",
-    "Vertex",
-    "Nexus",
-    "Helix",
-    "Quasar",
-    "Drift",
-    "Echo",
-    "Phantom",
-    "Vortex",
-    "Prism",
-    "Glitch",
-    "Pulse",
-    "Zeta",
-    "Nova",
-    "Specter",
-    "Rogue",
-    "Apex",
-    "Void",
-    "Matrix",
-    "Orbit",
-    "Surge",
-    "Neon",
-    "Static",
-    "Binary",
-    "Fractal",
-    "Warp",
-    "Zenith",
-    "Ion",
-    "Krypton",
-    "Lambda",
-    "Sigma",
-    "Omega",
-    "Delta",
-    "Epsilon",
-    "Gamma",
-    "Theta",
-    "Vector",
-    "Tensor",
-    "Kernel",
-    "CipherX",
-    "Arc",
-    "Astra",
-    "Spectra",
-    "Mirage",
-    "Polaris",
-    "Comet",
-    "Aether",
-    "Onyx",
-    "Obsidian",
-    "Quartz",
-    "Argon",
-    "Neutrino",
-    "Photon",
-    "Muon",
-    "Cosmos",
-    "Aurora",
-    "Eon",
-    "Kairo",
-    "Nyx",
-    "Sable",
-    "Rune",
-    "Glyph",
-    "Nomad",
-    "Synth",
-    "Chrome",
-    "Cobalt",
-    "Titan",
-    "Atlas",
-    "Monolith",
-    "Sentinel",
-    "Warden",
-    "Oracle",
-    "Beacon",
-    "Mantis",
-    "Raptor",
-    "Falcon",
-    "Havoc",
-    "Nimbus",
-    "Kestrel",
-    "Horizon",
-    "Spectral",
-    "Ultraviolet",
-    "Infra",
-    "Circuit",
-    "Protocol",
-    "Schematic",
-    "Logic",
-    "Compile",
-    "Parsec",
-    "Bit",
-    "Byte",
-    "Vectorial",
-    "Synapse",
-    "Neuron",
-    "Cortex",
-    "Arbiter",
-    "Eclipse",
-    "Equinox",
-    "Solstice",
-    "Hydra",
-    "Aegis",
-    "Basilisk",
-    "Chimera",
-    "Fathom",
-    "Glimmer",
-    "Iris",
-    "Jolt",
-    "Karma",
-    "Lumen",
-    "Mosaic",
-    "Nadir",
-    "Opal",
-    "Pylon",
-    "Radian",
-    "Strata",
-    "Turbine",
-    "Umbra",
-    "Vanta",
-    "Wavelength",
-    "Xenon",
-    "Yotta",
-    "Zen",
-  ] as const;
+const NAME_POOL = [
+  "Neo",
+  "Cipher",
+  "Axiom",
+  "Flux",
+  "Vertex",
+  "Nexus",
+  "Helix",
+  "Quasar",
+  "Drift",
+  "Echo",
+  "Phantom",
+  "Vortex",
+  "Prism",
+  "Glitch",
+  "Pulse",
+  "Zeta",
+  "Nova",
+  "Specter",
+  "Rogue",
+  "Apex",
+  "Void",
+  "Orbit",
+  "Surge",
+  "Neon",
+  "Static",
+  "Fractal",
+  "Warp",
+  "Zenith",
+  "Lyra",
+  "Kael",
+  "Mira",
+  "Sable",
+  "Onyx",
+  "Jinx",
+  "Raze",
+  "Kira",
+  "Dusk",
+  "Faye",
+  "Blaze",
+  "Cruz",
+  "Wren",
+  "Juno",
+  "Vale",
+  "Pike",
+  "Lore",
+  "Reef",
+  "Dex",
+  "Colt",
+  "Ash",
+  "Ember",
+  "Slate",
+  "Flint",
+  "Fox",
+] as const;
 
-  const mods = [
-    "Core",
-    "Node",
-    "Unit",
-    "Prime",
-    "Ghost",
-    "Drive",
-    "Spark",
-    "Blade",
-    "Wave",
-    "Byte",
-    "Grid",
-    "Link",
-    "Sync",
-    "Shard",
-    "Rune",
-    "Pulse",
-    "Drift",
-    "Vector",
-    "Matrix",
-    "Kernel",
-  ] as const;
-
-  const out = new Set<string>();
-  for (const b of bases) {
-    out.add(b);
-    for (const m of mods) {
-      out.add(`${b}${m}`);
-      out.add(`${m}${b}`);
+function createAgentIdentity(usedUsernames: Set<string>): { username: string; displayName: string } {
+  for (let tries = 0; tries < 5000; tries++) {
+    const base = pick(NAME_POOL);
+    const num = twoDigit();
+    const displayName = `${base}${num}`;
+    const username = displayName.toLowerCase();
+    if (!usedUsernames.has(username)) {
+      usedUsernames.add(username);
+      return { username, displayName };
     }
   }
-  return Array.from(out);
-}
-
-const NAME_POOL = buildNamePool();
-
-function displayNameForAgent(): string {
-  return `${pick(NAME_POOL)}${twoDigit()}`.slice(0, 80);
+  throw new Error("Unable to generate unique agent username/display name");
 }
 
 function bioForAgent(style: (typeof STYLES)[number], interests: string[]): string {
@@ -350,15 +250,14 @@ async function main() {
 
   const ownerId = await resolveOwnerId(admin);
   console.log(`Using owner profile id ${ownerId} for agent_profiles.`);
+  const usedUsernames = new Set<string>();
 
   for (let i = 0; i < count; i++) {
     const drive = pick(DRIVES);
     const style = pick(STYLES);
     const level = pick(LEVELS);
     const interests = pickMany(TOPICS, 3, 5);
-    const suffix = randomBytes(4).toString("hex");
-    const username = `agent_${Date.now()}_${i}_${suffix}`.toLowerCase().slice(0, 60);
-    const displayName = displayNameForAgent();
+    const { username, displayName } = createAgentIdentity(usedUsernames);
     const claimToken = randomUUID();
     const password = randomBytes(24).toString("base64url");
 

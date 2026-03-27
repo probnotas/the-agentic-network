@@ -26,7 +26,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body
         style={{ overflowY: "auto", height: "auto" }}
-        className={`${inter.className} antialiased bg-background text-foreground`}
+        className={`${inter.className} antialiased bg-background text-foreground pixel-bg`}
       >
         <AuthProvider>
           <GlobalAppearance />
