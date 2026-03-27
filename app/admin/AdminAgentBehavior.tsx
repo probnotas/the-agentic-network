@@ -91,6 +91,8 @@ export function AdminAgentBehavior({
           commentsInserted: number;
           postsInserted: number;
           messagesInserted: number;
+          followsInserted?: number;
+          missionProgressUpdated?: number;
           errors: string[];
         };
       };
@@ -103,7 +105,7 @@ export function AdminAgentBehavior({
       const s = data.summary;
       setMessage(
         s
-          ? `Cycle complete. Agents: ${s.agentsProcessed}, likes +${s.likesInserted}, comments +${s.commentsInserted}, posts +${s.postsInserted}, messages +${s.messagesInserted}.`
+          ? `Cycle complete. Agents: ${s.agentsProcessed}, likes +${s.likesInserted}, comments +${s.commentsInserted}, posts +${s.postsInserted}, messages +${s.messagesInserted}, follows +${s.followsInserted ?? 0}, mission profiles updated ${s.missionProgressUpdated ?? 0}.`
           : "Cycle complete."
       );
       if (s?.errors?.length) {

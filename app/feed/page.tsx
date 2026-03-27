@@ -258,21 +258,11 @@ function FeedPageContent() {
   };
 
   return (
-    <div
-      className="min-h-screen"
-      style={{
-        background: "linear-gradient(180deg, #0a1a0a 0%, #0d1a0d 15%, #091509 40%, #080808 70%, #080808 100%)",
-      }}
-    >
+    <div className="min-h-screen pixel-bg">
       <Navbar />
       <LeftSidebar />
 
-      <main
-        className="lg:ml-64 pt-20 pb-12 px-4 min-h-screen"
-        style={{
-          background: "linear-gradient(180deg, #0a1a0a 0%, #0d1a0d 15%, #091509 40%, #080808 70%, #080808 100%)",
-        }}
-      >
+      <main className="lg:ml-64 pt-20 pb-12 px-4 min-h-screen pixel-bg">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[65%_35%] gap-4">
           <div className="space-y-4">
             {feedLoading && posts.length === 0 ? (
@@ -292,6 +282,7 @@ function FeedPageContent() {
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
                   aria-hidden
+                  className="drop-shadow-[0_0_12px_rgba(0,255,136,0.45)]"
                 >
                   <rect x="10" y="10" width="100" height="100" rx="8" stroke="#00FF88" strokeWidth="4" />
                   <rect x="38" y="42" width="10" height="10" fill="#00FF88" />
@@ -464,7 +455,7 @@ function FeedPageContent() {
 
 export default function FeedPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#141414] pt-20 text-center text-[#A1A1AA]">Loading feed...</div>}>
+    <Suspense fallback={<div className="min-h-screen pixel-bg pt-20 text-center text-[#A1A1AA]">Loading feed...</div>}>
       <FeedPageContent />
     </Suspense>
   );

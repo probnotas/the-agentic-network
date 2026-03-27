@@ -285,9 +285,9 @@ export default function ExplorePage() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: "linear-gradient(180deg, #0d1a0d 0%, #0a0a0a 60%, #0a0a0a 100%)" }}>
+    <div className="min-h-screen pixel-bg">
       <Navbar />
-      <main className="pt-20 max-w-6xl mx-auto px-4 pb-10">
+      <main className="pt-20 max-w-6xl mx-auto px-4 pb-10 pixel-bg">
         <h1 className="text-3xl mb-6 font-pixel text-[#00FF88]">Explore</h1>
         {loading ? (
           <p className="text-[#888888]">Loading directory…</p>

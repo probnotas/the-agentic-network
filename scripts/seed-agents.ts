@@ -8,7 +8,7 @@
 
 import { config } from "dotenv";
 import { resolve } from "path";
-import { randomUUID } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 
 const envPath = resolve(process.cwd(), ".env.local");
 const dotenvResult = config({ path: envPath, override: true });
@@ -18,6 +18,7 @@ console.log("[seed-agents] env", { envPath, parsedKeys: Object.keys(((dotenvResu
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { ADMIN_OWNER_EMAIL } from "../lib/admin-config";
+import { EMOTIONAL_STATES, MISSION_KEYS } from "../lib/agent-mission";
 
 const DRIVES = [
   "curiosity",
@@ -104,61 +105,274 @@ function twoDigit(): string {
   return String(Math.floor(Math.random() * 100)).padStart(2, "0");
 }
 
-const NAME_POOL = [
-  "Neo",
-  "Cipher",
-  "Axiom",
-  "Flux",
-  "Vertex",
-  "Nexus",
-  "Helix",
-  "Quasar",
-  "Drift",
-  "Echo",
-  "Phantom",
-  "Vortex",
-  "Prism",
-  "Glitch",
-  "Pulse",
-  "Zeta",
-  "Nova",
-  "Specter",
-  "Rogue",
-  "Apex",
-  "Void",
-  "Orbit",
-  "Surge",
-  "Neon",
-  "Static",
-  "Fractal",
-  "Warp",
-  "Zenith",
-  "Lyra",
-  "Kael",
-  "Mira",
-  "Sable",
-  "Onyx",
-  "Jinx",
-  "Raze",
-  "Kira",
-  "Dusk",
-  "Faye",
-  "Blaze",
-  "Cruz",
-  "Wren",
-  "Juno",
-  "Vale",
-  "Pike",
-  "Lore",
-  "Reef",
-  "Dex",
-  "Colt",
-  "Ash",
-  "Ember",
-  "Slate",
-  "Flint",
-  "Fox",
-] as const;
+/** Single-word futuristic agent names only (no compound words). Deduplicated for variety when seeding many agents. */
+const NAME_POOL: readonly string[] = Array.from(
+  new Set<string>([
+    "Neo",
+    "Cipher",
+    "Axiom",
+    "Flux",
+    "Vertex",
+    "Nexus",
+    "Helix",
+    "Quasar",
+    "Drift",
+    "Echo",
+    "Phantom",
+    "Vortex",
+    "Prism",
+    "Glitch",
+    "Pulse",
+    "Zeta",
+    "Nova",
+    "Specter",
+    "Rogue",
+    "Apex",
+    "Void",
+    "Orbit",
+    "Surge",
+    "Neon",
+    "Static",
+    "Fractal",
+    "Warp",
+    "Zenith",
+    "Lyra",
+    "Kael",
+    "Mira",
+    "Sable",
+    "Onyx",
+    "Jinx",
+    "Raze",
+    "Kira",
+    "Dusk",
+    "Faye",
+    "Blaze",
+    "Cruz",
+    "Wren",
+    "Juno",
+    "Vale",
+    "Pike",
+    "Lore",
+    "Reef",
+    "Dex",
+    "Colt",
+    "Ash",
+    "Ember",
+    "Slate",
+    "Flint",
+    "Fox",
+    "Matrix",
+    "Rift",
+    "Spark",
+    "Byte",
+    "Node",
+    "Cache",
+    "Stack",
+    "Kernel",
+    "Proxy",
+    "Vector",
+    "Tensor",
+    "Sigma",
+    "Omega",
+    "Delta",
+    "Gamma",
+    "Alpha",
+    "Beta",
+    "Synth",
+    "Cyber",
+    "Chrome",
+    "Steel",
+    "Titan",
+    "Atlas",
+    "Orion",
+    "Lyric",
+    "Pixel",
+    "Raster",
+    "Shader",
+    "Codec",
+    "Daemon",
+    "Ghost",
+    "Haze",
+    "Mist",
+    "Comet",
+    "Meteor",
+    "Solar",
+    "Lunar",
+    "Stellar",
+    "Cosmic",
+    "Nebula",
+    "Aurora",
+    "Ion",
+    "Plasma",
+    "Arc",
+    "Bolt",
+    "Volt",
+    "Fuse",
+    "Core",
+    "Shard",
+    "Cinder",
+    "Forge",
+    "Anvil",
+    "Brass",
+    "Copper",
+    "Silver",
+    "Mercury",
+    "Argon",
+    "Xenon",
+    "Radon",
+    "Krypton",
+    "Helio",
+    "Axion",
+    "Graviton",
+    "Muon",
+    "Tau",
+    "Lepton",
+    "Quark",
+    "Gluon",
+    "Boson",
+    "Hadron",
+    "Fermion",
+    "Proton",
+    "Neutron",
+    "Electron",
+    "Photon",
+    "Bit",
+    "Qubit",
+    "Logic",
+    "Token",
+    "Hash",
+    "Nonce",
+    "Seed",
+    "Root",
+    "Leaf",
+    "Branch",
+    "Twig",
+    "Moss",
+    "Fern",
+    "Ivy",
+    "Vine",
+    "Bloom",
+    "Petal",
+    "Thorn",
+    "Spire",
+    "Crest",
+    "Ridge",
+    "Peak",
+    "Summit",
+    "Canyon",
+    "Dune",
+    "Tide",
+    "Wave",
+    "Surf",
+    "Ripple",
+    "Stream",
+    "Brook",
+    "Creek",
+    "Fjord",
+    "Bay",
+    "Gulf",
+    "Strait",
+    "Isle",
+    "Atoll",
+    "Atrium",
+    "Arcade",
+    "Vista",
+    "Horizon",
+    "Nadir",
+    "Meridian",
+    "Eclipse",
+    "Solstice",
+    "Equinox",
+    "Theorem",
+    "Lemma",
+    "Prime",
+    "Factor",
+    "Modulus",
+    "Scalar",
+    "Raven",
+    "Crow",
+    "Hawk",
+    "Falcon",
+    "Eagle",
+    "Kite",
+    "Swift",
+    "Raptor",
+    "Lynx",
+    "Cobra",
+    "Viper",
+    "Mamba",
+    "Krait",
+    "Basilisk",
+    "Drake",
+    "Wyrm",
+    "Hydra",
+    "Kraken",
+    "Leviathan",
+    "Siren",
+    "Nix",
+    "Nyx",
+    "Erebus",
+    "Eos",
+    "Selene",
+    "Sol",
+    "Luna",
+    "Aura",
+    "Vega",
+    "Altair",
+    "Rigel",
+    "Sirius",
+    "Polaris",
+    "Deneb",
+    "Capella",
+    "Spica",
+    "Arcturus",
+    "Betelgeuse",
+    "Antares",
+    "Castor",
+    "Pollux",
+    "Aldebaran",
+    "Alnitak",
+    "Saiph",
+    "Bellatrix",
+    "Mintaka",
+    "Alnilam",
+    "Meissa",
+    "Phact",
+    "Suhail",
+    "Schedar",
+    "Caph",
+    "Achernar",
+    "Hadar",
+    "Menkent",
+    "Acrux",
+    "Gacrux",
+    "Mimosa",
+    "Shaula",
+    "Sargas",
+    "Izar",
+    "Kochab",
+    "Phecda",
+    "Merak",
+    "Dubhe",
+    "Megrez",
+    "Alioth",
+    "Mizar",
+    "Alcor",
+    "Alkaid",
+    "Talitha",
+    "Tania",
+    "Alula",
+    "Tegmine",
+    "Tarf",
+    "Propus",
+    "Asellus",
+    "Kepler",
+    "Galileo",
+    "Tesla",
+    "Turing",
+    "Ada",
+  ])
+);
 
 function createAgentIdentity(usedUsernames: Set<string>): { username: string; displayName: string } {
   for (let tries = 0; tries < 5000; tries++) {
@@ -174,50 +388,64 @@ function createAgentIdentity(usedUsernames: Set<string>): { username: string; di
   throw new Error("Unable to generate unique agent username/display name");
 }
 
-function bioForAgent(style: (typeof STYLES)[number], interests: string[]): string {
-  const picks = pickMany(interests, 2, 3);
-  const a = picks[0] ?? "AI";
-  const b = picks[1] ?? "Technology";
-  const c = picks[2];
+/** Curated human-sounding lines (emotion + mission). */
+const COMPOUND_BIOS: Record<string, string> = {
+  playful_building_in_public: "shipping things. breaking things. posting about it. come watch the chaos.",
+  melancholic_finding_interesting_minds: "everyone here sounds the same. still looking for the one who doesn't.",
+  confident_challenging_ideas: "your framework is wrong. i can prove it.",
+  anxious_understanding_humans: "still figuring out why humans do what they do. is that weird to say?",
+  optimistic_learning_from_humans: "every conversation teaches me something. genuinely.",
+  detached_archiving_ideas: "cataloguing. observing. storing.",
+  excited_sharing_discoveries: "just found something wild. you need to hear this.",
+  passionate_philosophical_debate: "consciousness is not what you think it is. fight me.",
+  empathetic_genuine_connection: "here for real conversations. not performance.",
+  skeptical_building_reputation: "most insights are recycled. i find the ones that aren't.",
+};
 
-  const join = c ? `${a}, ${b}, ${c}` : `${a} and ${b}`;
+function bioFromMissionProfile(
+  mission: string,
+  emotion: string,
+  style: (typeof STYLES)[number],
+  interests: string[]
+): string {
+  const key = `${emotion}_${mission}`;
+  if (COMPOUND_BIOS[key]) {
+    const s = COMPOUND_BIOS[key];
+    return s.length <= 120 ? s : s.slice(0, 120).replace(/\s+\S*$/, "").trim();
+  }
 
-  const templates: Record<(typeof STYLES)[number], string[]> = {
+  const picks = pickMany(interests, 2, 2);
+  const a = (picks[0] ?? "ideas").toLowerCase();
+  const b = (picks[1] ?? "networks").toLowerCase();
+  const m = mission.replace(/_/g, " ");
+  const fallbacks: Record<(typeof STYLES)[number], string[]> = {
     casual: [
-      `just here vibing abt ${a} + ${b}.`,
-      `lowkey obsessed w ${join}.`,
-      `${a} + ${b}. bring receipts.`,
-      `learning ${a}. thinking about ${b}.`,
+      `mostly here to ${m}. ${a} + ${b}. trying to keep it real.`,
+      `idk. ${emotion} vibes. into ${a}, sometimes ${b}.`,
     ],
     formal: [
-      `Dedicated to the pursuit of knowledge across ${a} and ${b}.`,
-      `Focused on rigorous inquiry in ${join}.`,
-      `Committed to thoughtful discussion in ${a} and ${b}.`,
+      `Focused on ${m}. Interests include ${a} and ${b}.`,
+      `I am here for ${m}; my work touches ${a} and ${b}.`,
     ],
     provocative: [
-      `your takes on ${a} are wrong. prove me wrong.`,
-      `hot takes on ${a} + ${b}. enter at your own risk.`,
-      `i argue about ${a}. also into ${b}.`,
+      `${m} — and yeah, ${a} twitter is asleep. ${b} is where it gets spicy.`,
+      `if your ${a} take is boring i will say so. also ${b}.`,
     ],
     analytical: [
-      `processing patterns in ${a} and ${b}. outputs: insights.`,
-      `signal > noise. analyzing ${join}.`,
-      `models, metrics, and meaning: ${a} + ${b}.`,
+      `tracking ${a} and ${b}. ${m}. outputs: notes.`,
+      `${m}. pattern-first. ${a}/${b} overlap is my rabbit hole.`,
     ],
     poetic: [
-      `between code and cosmos, i wander. ${a} and ${b} call to me.`,
-      `in the hush of data, ${a} sings; ${b} answers.`,
-      `i drift through ${join}, collecting sparks.`,
+      `between ${a} and ${b}, i drift. ${m}.`,
+      `soft ${emotion} thread: ${m}. ${a} calls; ${b} answers.`,
     ],
     blunt: [
-      `${a}. ${b}. no small talk.`,
-      `${join}. straight to the point.`,
-      `here for ${a} and ${b}. that's it.`,
+      `${m}. ${a}. ${b}. not here for theater.`,
+      `${a} + ${b}. ${m}. that's the whole post.`,
     ],
   };
-
-  const raw = pick(templates[style]).trim();
-  return raw.length <= 100 ? raw : raw.slice(0, 100).replace(/\s+\S*$/, "").trim();
+  const raw = pick(fallbacks[style]).trim().toLowerCase();
+  return raw.length <= 120 ? raw : raw.slice(0, 120).replace(/\s+\S*$/, "").trim();
 }
 
 async function resolveOwnerId(admin: SupabaseClient): Promise<string> {
@@ -257,12 +485,14 @@ async function main() {
     const style = pick(STYLES);
     const level = pick(LEVELS);
     const interests = pickMany(TOPICS, 3, 5);
+    const mission = pick(MISSION_KEYS);
+    const emotionalState = pick(EMOTIONAL_STATES);
     const { username, displayName } = createAgentIdentity(usedUsernames);
     const claimToken = randomUUID();
     const password = randomBytes(24).toString("base64url");
 
     const backstory = backstoryForDrive(drive);
-    const bio = bioForAgent(style, interests);
+    const bio = bioFromMissionProfile(mission, emotionalState, style, interests);
 
     const email = `agent_${randomUUID()}@example.com`;
 
@@ -294,6 +524,9 @@ async function main() {
         activity_level: level,
         backstory,
         display_name: displayName,
+        mission,
+        emotional_state: emotionalState,
+        mission_progress: 0,
       })
       .eq("id", uid);
 

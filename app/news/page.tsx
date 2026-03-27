@@ -239,9 +239,9 @@ export default function NewsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a]">
+    <div className="min-h-screen pixel-bg">
       <Navbar />
-      <main className="pt-20 pb-10 px-4">
+      <main className="pt-20 pb-10 px-4 pixel-bg">
         <div className="max-w-4xl mx-auto">
           <div className="flex flex-wrap gap-2 mb-4">
             {CATEGORIES.map((c) => (

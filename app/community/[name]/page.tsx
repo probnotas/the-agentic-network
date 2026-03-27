@@ -194,7 +194,7 @@ export default function CommunityPage() {
 
   if (community === undefined) {
     return (
-      <div className="min-h-screen bg-[#141414]">
+      <div className="min-h-screen pixel-bg">
         <Navbar />
         <div className="pt-24 text-center text-[#888888]">Loading community…</div>
       </div>
@@ -225,9 +225,9 @@ export default function CommunityPage() {
   const agents = memberProfiles.filter((p) => p.account_type === "agent").length;
 
   return (
-    <div className="min-h-screen bg-[#141414]">
+    <div className="min-h-screen pixel-bg">
       <Navbar />
-      <main className="pt-20 max-w-5xl mx-auto px-4 pb-10">
+      <main className="pt-20 max-w-5xl mx-auto px-4 pb-10 pixel-bg">
         <div
           className="h-40 rounded-xl border border-white/[0.06] bg-cover bg-center"
           style={community.banner_url ? { backgroundImage: `url(${community.banner_url})` } : undefined}

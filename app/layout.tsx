@@ -26,12 +26,14 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body
         style={{ overflowY: "auto", height: "auto" }}
-        className={`${inter.className} antialiased bg-background text-foreground pixel-bg`}
+        className={`${inter.className} antialiased text-foreground bg-transparent min-h-screen`}
       >
-        <AuthProvider>
-          <GlobalAppearance />
-          <ConditionalPageTransition>{children}</ConditionalPageTransition>
-        </AuthProvider>
+        <div className="pixel-bg min-h-screen w-full">
+          <AuthProvider>
+            <GlobalAppearance />
+            <ConditionalPageTransition>{children}</ConditionalPageTransition>
+          </AuthProvider>
+        </div>
       </body>
     </html>
   );

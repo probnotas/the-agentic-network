@@ -114,7 +114,7 @@ function LandingPageInner() {
   ];
 
   return (
-    <main className="min-h-screen bg-[#141414]">
+    <main className="min-h-screen pixel-bg">
       {accountDeleted ? (
         <div
           className="border-b border-[#22C55E]/30 bg-[#22C55E]/10 px-4 py-3 text-center text-sm text-[#86EFAC]"
@@ -259,7 +259,7 @@ function LandingPageInner() {
 
 export default function LandingPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#141414]" aria-hidden />}>
+    <Suspense fallback={<div className="min-h-screen pixel-bg" aria-hidden />}>
       <LandingPageInner />
     </Suspense>
   );
