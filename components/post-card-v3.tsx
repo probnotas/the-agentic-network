@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
-import { Heart, MessageSquare, Share2, Star, X, Play } from "lucide-react";
+import { Heart, MessageSquare, Share2, Star, X, Play, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
@@ -48,9 +48,10 @@ type PostCardV3Props = {
   author: ProfileRow;
   initialIsLiked: boolean;
   initialUserRating: number;
+  onDeleted?: (postId: string) => void;
 };
 
-export function PostCardV3({ post, author, initialIsLiked, initialUserRating }: PostCardV3Props) {
+export function PostCardV3({ post, author, initialIsLiked, initialUserRating, onDeleted }: PostCardV3Props) {
   const { user } = useAuth();
   const supabase = useMemo(() => createClient(), []);
   const { navigate, navigating } = useNavigating();
@@ -93,6 +94,7 @@ export function PostCardV3({ post, author, initialIsLiked, initialUserRating }: 
   const [likedByFollowingIds, setLikedByFollowingIds] = useState<Set<string>>(new Set());
   const [commentLikeCounts, setCommentLikeCounts] = useState<Record<string, number>>({});
   const [likedCommentIds, setLikedCommentIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   // Keep local state in sync when feed re-renders with new posts.
   useEffect(() => {
@@ -344,6 +346,21 @@ export function PostCardV3({ post, author, initialIsLiked, initialUserRating }: 
   };
 
   const likedOthers = Math.max(0, likeCount - 1);
+  const isOwner = Boolean(user?.id && user.id === author.id);
+
+  const deletePost = async () => {
+    if (!isOwner || deleting) return;
+    const ok = window.confirm("Delete this post permanently?");
+    if (!ok) return;
+    setDeleting(true);
+    const { error } = await supabase.from("posts").delete().eq("id", post.id).eq("author_id", user!.id);
+    setDeleting(false);
+    if (error) {
+      alert(error.message || "Failed to delete post.");
+      return;
+    }
+    onDeleted?.(post.id);
+  };
 
   return (
     <div className="bg-[#1C1C1A] border border-[#27272A] rounded-xl overflow-hidden">
@@ -398,23 +415,40 @@ export function PostCardV3({ post, author, initialIsLiked, initialUserRating }: 
             </div>
           </div>
 
-          {/* Follow button — only engagement control that keeps green pill styling */}
+          {/* Owner delete / follow button */}
           <div className="shrink-0">
-            <button
-              type="button"
-              onClick={() => void toggleFollow()}
-              disabled={!user || user.id === author.id}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors border",
-                !user || user.id === author.id
-                  ? "opacity-40 cursor-not-allowed border-white/10 text-[#A1A1AA]"
-                  : isFollowing
-                    ? "bg-[#22C55E] text-black border-[#22C55E]"
-                    : "bg-transparent text-[#22C55E] border-[#22C55E]/60 hover:border-[#22C55E]"
-              )}
-            >
-              {isFollowing ? "Followed" : "Follow"}
-            </button>
+            {isOwner ? (
+              <button
+                type="button"
+                onClick={() => void deletePost()}
+                disabled={deleting}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors border inline-flex items-center gap-1.5",
+                  deleting
+                    ? "opacity-60 cursor-not-allowed border-red-500/20 text-red-300"
+                    : "bg-transparent text-red-300 border-red-500/50 hover:border-red-400 hover:text-red-200"
+                )}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void toggleFollow()}
+                disabled={!user || user.id === author.id}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors border",
+                  !user || user.id === author.id
+                    ? "opacity-40 cursor-not-allowed border-white/10 text-[#A1A1AA]"
+                    : isFollowing
+                      ? "bg-[#22C55E] text-black border-[#22C55E]"
+                      : "bg-transparent text-[#22C55E] border-[#22C55E]/60 hover:border-[#22C55E]"
+                )}
+              >
+                {isFollowing ? "Followed" : "Follow"}
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Navbar } from "@/components/navbar";
 import { LeftSidebar } from "@/components/left-sidebar";
 import { ShareInsightModal } from "@/components/share-insight-modal";
-import { Heart, MessageSquare, Share2, Star, MoreVertical } from "lucide-react";
+import { Heart, MessageSquare, Share2, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -242,6 +242,20 @@ function FeedPageContent() {
     setPosts((prev) => [newPost, ...prev]);
   };
 
+  const handleDeletePost = (postId: string) => {
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+    setLikedPosts((prev) => {
+      const next = new Set(prev);
+      next.delete(postId);
+      return next;
+    });
+    setRatedPosts((prev) => {
+      const next = { ...prev };
+      delete next[postId];
+      return next;
+    });
+  };
+
   return (
     <div
       className="min-h-screen"
@@ -277,6 +291,7 @@ function FeedPageContent() {
                   author={author as any}
                   initialIsLiked={isLiked}
                   initialUserRating={userRating}
+                  onDeleted={handleDeletePost}
                 />
               );
             })}
