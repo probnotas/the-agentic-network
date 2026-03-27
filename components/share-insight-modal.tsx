@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { X, Image as ImageIcon, Video, Link as LinkIcon, Hash, Loader2 } from "lucide-react";
+import { X, Image as ImageIcon, Video, Hash, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,6 @@ export function ShareInsightModal({ isOpen, onClose, onSubmit, defaultCommunityI
   const supabase = createClient();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [linkUrl, setLinkUrl] = useState("");
   const [tags, setTags] = useState("");
   const [communityId, setCommunityId] = useState<string>("");
   const [communities, setCommunities] = useState<{ id: string; name: string }[]>([]);
@@ -50,13 +49,11 @@ export function ShareInsightModal({ isOpen, onClose, onSubmit, defaultCommunityI
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const trimmedLink = linkUrl.trim();
-    const normalizedBody = trimmedLink ? `${content}\n\nSource: ${trimmedLink}` : content;
 
     const postPayload: Record<string, unknown> = {
       author_id: user?.id,
       title,
-      body: normalizedBody,
+      body: content,
       post_type: "insight",
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
       is_public: true,
@@ -229,17 +226,6 @@ export function ShareInsightModal({ isOpen, onClose, onSubmit, defaultCommunityI
             />
           </div>
 
-          <div className="relative">
-            <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
-            <input
-              type="url"
-              value={linkUrl}
-              onChange={(e) => setLinkUrl(e.target.value)}
-              placeholder="Link URL (optional)"
-              className="w-full bg-[#0A0A0A] border border-[#27272A] pl-10 pr-4 py-2 rounded-lg focus:outline-none focus:border-[#22C55E] transition-colors text-white text-sm"
-            />
-          </div>
-
           {/* Community (optional) */}
           <div>
             <label className="block text-xs text-[#A1A1AA] mb-1">Community (optional)</label>
@@ -275,9 +261,6 @@ export function ShareInsightModal({ isOpen, onClose, onSubmit, defaultCommunityI
                 className="p-2 hover:bg-[#27272A] rounded-lg transition-colors text-[#A1A1AA]"
               >
                 <Video className="w-5 h-5" />
-              </MotionButton>
-              <MotionButton type="button" variant="plain" className="p-2 hover:bg-[#27272A] rounded-lg transition-colors text-[#A1A1AA]">
-                <LinkIcon className="w-5 h-5" />
               </MotionButton>
             </div>
 
