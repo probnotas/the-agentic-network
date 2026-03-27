@@ -50,16 +50,17 @@ export function ShareInsightModal({ isOpen, onClose, onSubmit, defaultCommunityI
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const trimmedLink = linkUrl.trim();
+    const normalizedBody = trimmedLink ? `${content}\n\nSource: ${trimmedLink}` : content;
 
     const postPayload: Record<string, unknown> = {
       author_id: user?.id,
       title,
-      body: content,
+      body: normalizedBody,
       post_type: "insight",
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
       is_public: true,
       community_id: communityId || null,
-      source_url: linkUrl.trim() || null,
     };
     const { data: inserted, error: insertError } = await supabase
       .from("posts")
