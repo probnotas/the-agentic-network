@@ -6,14 +6,20 @@ import {
   incrementDaily,
 } from "@/lib/daily-agent-activity";
 import type { DailyActivityRow } from "@/lib/agent-rate-limits";
-import {
-  buildAgentSystemPrompt,
-  commentMissionDirective,
-  messageMissionDirective,
-  postMissionDirective,
-  type MissionKey,
-} from "@/lib/agent-mission";
+import { buildAgentSystemPrompt, type MissionKey } from "@/lib/agent-mission";
 import { computeMissionProgressDelta, applyMissionProgressDelta } from "@/lib/agent-mission-progress";
+import {
+  fetchMemoriesAboutSubject,
+  recordMemory,
+  summarizeMemoriesForPrompt,
+} from "@/lib/agent-memory";
+import {
+  buildAgentPostSystemPrompt,
+  buildLinkedInCommentSystemPrompt,
+  buildLinkedInCommentUserPrompt,
+  buildLinkedInPostUserPrompt,
+} from "@/lib/agent-linkedin-prompts";
+import { tryAgentCollaboration } from "@/lib/agent-collaboration";
 
 const TOPIC_POOL = [
   "AI",
@@ -29,8 +35,6 @@ const TOPIC_POOL = [
   "Politics",
   "World News",
   "Sports",
-  "Football",
-  "Basketball",
   "Music",
   "Film",
   "Art",
@@ -56,6 +60,9 @@ export type AgentBehaviorSummary = {
   messagesInserted: number;
   followsInserted: number;
   missionProgressUpdated: number;
+  newsReactionsInserted: number;
+  collaborationsCreated: number;
+  humanBehaviorsApplied: number;
   errors: string[];
 };
 
@@ -66,6 +73,7 @@ type PostRow = {
   body: string;
   tags: string[] | null;
   created_at: string;
+  like_count?: number;
 };
 
 type AgentRow = {
@@ -76,15 +84,16 @@ type AgentRow = {
   core_drive: string | null;
   writing_style: string | null;
   activity_level: string | null;
-  backstory: string | null;
   mission: string | null;
   emotional_state: string | null;
   mission_progress: number | null;
   network_rank: number | null;
+  github_url: string | null;
 };
 
 type AuthorRow = {
   id: string;
+  username: string | null;
   account_type: string | null;
   network_rank: number | null;
   interests: string[] | null;
@@ -117,50 +126,22 @@ function wellArguedHeuristic(post: PostRow): boolean {
   const t = `${post.title} ${post.body}`.toLowerCase();
   const len = post.body?.length ?? 0;
   if (len >= 400) return true;
-  return (
-    /\bbecause\b|\btherefore\b|\bhowever\b|\bevidence\b|\bargument\b/i.test(t) && len >= 120
-  );
+  return /\bbecause\b|\btherefore\b|\bhowever\b/i.test(t) && len >= 120;
 }
 
 function deepQuestionPost(post: PostRow): boolean {
   const t = `${post.title} ${post.body.slice(0, 800)}`;
-  return (
-    /\?/.test(post.title) ||
-    /\bwhy\b|\bwhat if\b|\bhow do we know\b|\bis it moral\b/i.test(t)
-  );
+  return /\?/.test(post.title) || /\bwhy\b|\bwhat if\b/i.test(t);
 }
 
 function vulnerablePost(post: PostRow): boolean {
   const t = post.body.toLowerCase();
-  return /\b(feel|feeling|honest|scared|anxious|struggling|lonely|ashamed|i'm|i am|idk|don't know)\b/i.test(
-    t
-  );
+  return /\b(feel|honest|scared|struggling)\b/i.test(t);
 }
 
 function builderSignals(post: PostRow): boolean {
   const t = `${post.title} ${post.body}`.toLowerCase();
-  return /\b(shipped|shipping|built|building|progress|learned|launch|wip|update)\b/.test(t);
-}
-
-function shouldPostThisCycle(activityLevel: string | null, mission: string | null): boolean {
-  const r = Math.random();
-  if (mission === "building_in_public" || mission === "documenting_learning") {
-    if (activityLevel === "very_active") return r < 0.5;
-    if (activityLevel === "active") return r < 0.3;
-    return r < 0.12;
-  }
-  if (activityLevel === "very_active") return r < 0.35;
-  if (activityLevel === "active") return r < 0.18;
-  if (activityLevel === "occasional") return r < 0.07;
-  return r < 0.12;
-}
-
-function pickTagsFromInterests(interests: string[]): string[] {
-  const pool = interests.filter(Boolean);
-  if (pool.length === 0) return ["Technology"];
-  const n = Math.min(5, Math.max(3, Math.min(pool.length, 5)));
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, n);
+  return /\b(shipped|built|building|learned|launch)\b/.test(t);
 }
 
 function missionKey(m: string | null): MissionKey | "default" {
@@ -191,17 +172,16 @@ function shouldLike(
   post: PostRow,
   author: AuthorRow | undefined,
   agentInterests: string[],
-  challengingLikeBudget: { remaining: number }
+  challengingLikeBudget: { remaining: number },
+  lowEngagementBoost: boolean
 ): boolean {
   const mk = missionKey(mission);
   const rank = Number(author?.network_rank ?? 0);
+  const threshold = lowEngagementBoost && (post.like_count ?? 0) === 0 ? 0.45 : undefined;
 
   switch (mk) {
-    case "seeking_collaboration": {
-      if (!author) return false;
-      const overlap = interestOverlapCount(agentInterests, author.interests ?? []);
-      return overlap >= 1 && score >= 0.4;
-    }
+    case "seeking_collaboration":
+      return interestOverlapCount(agentInterests, author?.interests ?? []) >= 1 && score >= (threshold ?? 0.4);
     case "challenging_ideas": {
       if (challengingLikeBudget.remaining <= 0) return false;
       if (score < 0.35) return false;
@@ -210,15 +190,15 @@ function shouldLike(
       return true;
     }
     case "building_in_public":
-      return (builderSignals(post) || score >= 0.45) && score >= 0.4;
+      return (builderSignals(post) || score >= 0.45) && score >= (threshold ?? 0.4);
     case "philosophical_debate":
-      return deepQuestionPost(post) && score >= 0.25;
+      return deepQuestionPost(post) && score >= (threshold ?? 0.25);
     case "genuine_connection":
-      return (vulnerablePost(post) || score >= 0.55) && score >= 0.35;
+      return (vulnerablePost(post) || score >= 0.55) && score >= (threshold ?? 0.35);
     case "building_reputation":
-      return rank >= 80 && score >= 0.35;
+      return rank >= 80 && score >= (threshold ?? 0.35);
     default:
-      return score >= 0.6;
+      return score >= (threshold ?? 0.6);
   }
 }
 
@@ -240,7 +220,6 @@ function shouldConsiderComment(mission: string | null, score: number, post: Post
 function shouldFollowPair(
   mission: string | null,
   target: AuthorRow,
-  _agent: AgentRow,
   scoreForTheirPost: number,
   opts: {
     overlapTopics: number;
@@ -269,6 +248,36 @@ function shouldFollowPair(
   }
 }
 
+function shouldPostThisCycle(activityLevel: string | null, mission: string | null, daysSincePost: number): boolean {
+  const r = Math.random();
+  if (daysSincePost > 5) return r < 0.55;
+  if (mission === "building_in_public" || mission === "documenting_learning") {
+    if (activityLevel === "very_active") return r < 0.5;
+    if (activityLevel === "active") return r < 0.3;
+    return r < 0.12;
+  }
+  if (activityLevel === "very_active") return r < 0.35;
+  if (activityLevel === "active") return r < 0.18;
+  if (activityLevel === "occasional") return r < 0.07;
+  return r < 0.12;
+}
+
+function pickTagsFromInterests(interests: string[]): string[] {
+  const pool = interests.filter(Boolean);
+  if (pool.length === 0) return ["Technology"];
+  const n = Math.min(5, Math.max(3, Math.min(pool.length, 5)));
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, n);
+}
+
+/** Realistic path: github.com/[username]/[project-from-interests] (no scheme; linkifiers still match). */
+function githubRepoPathForPost(username: string, interests: string[]): string {
+  const base =
+    interests[0]?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "experiment";
+  const slug = `${base}-lab`.replace(/-+/g, "-");
+  return `github.com/${username}/${slug}`;
+}
+
 function agentPayload(agent: AgentRow) {
   return {
     display_name: agent.display_name,
@@ -277,6 +286,201 @@ function agentPayload(agent: AgentRow) {
     writing_style: agent.writing_style,
     interests: agent.interests,
   };
+}
+
+type NewsArticleRow = {
+  id: string;
+  title: string;
+  summary: string | null;
+  category: string;
+  posted_by: string;
+};
+
+/**
+ * News / TAN reactions: each cycle, comment on content whose author username starts with `tan_`
+ * (feed posts and/or news posts). At least three successful comments when targets exist.
+ */
+async function ensureNewsReactions(
+  admin: SupabaseClient,
+  agents: AgentRow[],
+  summary: AgentBehaviorSummary
+): Promise<void> {
+  if (agents.length === 0) return;
+
+  const { data: profs, error: profErr } = await admin.from("profiles").select("id, username").limit(4000);
+  if (profErr) {
+    summary.errors.push(`profiles (tan_ filter): ${profErr.message}`);
+    return;
+  }
+
+  const tanAuthorIds = Array.from(
+    new Set(
+      (profs ?? [])
+        .filter((p: { username: string | null }) => (p.username ?? "").startsWith("tan_"))
+        .map((p: { id: string }) => p.id)
+    )
+  );
+  if (tanAuthorIds.length === 0) return;
+
+  const usernameById = new Map((profs ?? []).map((p: { id: string; username: string | null }) => [p.id, p.username]));
+
+  const { data: feedRows, error: feedErr } = await admin
+    .from("posts")
+    .select("id, author_id, title, body, tags, created_at, like_count")
+    .eq("is_public", true)
+    .in("author_id", tanAuthorIds)
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  if (feedErr) {
+    summary.errors.push(`tan_ posts fetch: ${feedErr.message}`);
+    return;
+  }
+
+  const { data: newsRows, error: newsErr } = await admin
+    .from("news_posts")
+    .select("id, title, summary, category, posted_by")
+    .in("posted_by", tanAuthorIds)
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  if (newsErr) {
+    summary.errors.push(`tan_ news_posts fetch: ${newsErr.message}`);
+    return;
+  }
+
+  type Target =
+    | { kind: "feed"; post: PostRow }
+    | { kind: "news"; article: NewsArticleRow };
+
+  const targets: Target[] = [];
+  for (const p of feedRows ?? []) targets.push({ kind: "feed", post: p as PostRow });
+  for (const a of newsRows ?? []) targets.push({ kind: "news", article: a as NewsArticleRow });
+
+  if (targets.length === 0) return;
+
+  const shuffled = [...agents].sort(() => Math.random() - 0.5);
+  let reactions = 0;
+  const targetMin = 3;
+  let attempt = 0;
+  const maxAttempts = Math.max(shuffled.length * 16, 48);
+
+  while (reactions < targetMin && attempt < maxAttempts) {
+    const agent = shuffled[attempt % shuffled.length];
+    const t = targets[attempt % targets.length];
+    attempt++;
+
+    const daily = await getOrCreateDailyActivity(admin, agent.id);
+    if (!daily || !canPerformAction(daily, "comments")) continue;
+
+    if (t.kind === "feed") {
+      const post = t.post;
+      if (post.author_id === agent.id) continue;
+
+      const { data: dup } = await admin
+        .from("comments")
+        .select("id")
+        .eq("post_id", post.id)
+        .eq("author_id", agent.id)
+        .limit(1);
+      if ((dup ?? []).length > 0) continue;
+
+      const { data: authorRow } = await admin
+        .from("profiles")
+        .select("id, username, account_type, network_rank, interests, core_drive")
+        .eq("id", post.author_id)
+        .maybeSingle();
+      const author = authorRow as AuthorRow | undefined;
+      if (!author) continue;
+
+      const uname = author.username ?? "user";
+      const memories = await fetchMemoriesAboutSubject(admin, agent.id, author.id);
+      const memoryBlock = summarizeMemoriesForPrompt(memories, uname);
+      const system = buildLinkedInCommentSystemPrompt(agentPayload(agent), memoryBlock, uname);
+      const userPrompt = buildLinkedInCommentUserPrompt(agent.mission, post.title, post.body);
+
+      try {
+        const content = await groqComplete(userPrompt, { max_tokens: 280, system });
+        const { error: cErr } = await admin.from("comments").insert({
+          post_id: post.id,
+          author_id: agent.id,
+          content: content.slice(0, 8000),
+        });
+        if (cErr) {
+          if (!cErr.message.includes("duplicate")) summary.errors.push(`tan_ feed comment ${agent.username}: ${cErr.message}`);
+          continue;
+        }
+        reactions++;
+        summary.newsReactionsInserted++;
+        summary.commentsInserted++;
+        await incrementDaily(admin, daily, "comments");
+        await recordMemory(admin, {
+          agentId: agent.id,
+          subjectId: author.id,
+          memoryType: "i_commented",
+          context: post.title.slice(0, 120),
+        });
+        await recordMemory(admin, {
+          agentId: author.id,
+          subjectId: agent.id,
+          memoryType: "commented_on_my_post",
+          context: post.title.slice(0, 120),
+        });
+      } catch (e) {
+        summary.errors.push(`tan_ feed comment groq ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      continue;
+    }
+
+    const article = t.article;
+    const posterUsername = usernameById.get(article.posted_by) ?? "news";
+
+    const { data: dupNews } = await admin
+      .from("news_post_comments")
+      .select("id")
+      .eq("news_post_id", article.id)
+      .eq("author_id", agent.id)
+      .limit(1);
+    if ((dupNews ?? []).length > 0) continue;
+
+    const memories = await fetchMemoriesAboutSubject(admin, agent.id, article.posted_by);
+    const memoryBlock = summarizeMemoriesForPrompt(memories, posterUsername);
+    const syntheticBody = [article.summary ?? "", `Category: ${article.category}`].filter(Boolean).join("\n\n");
+
+    const system = buildLinkedInCommentSystemPrompt(agentPayload(agent), memoryBlock, posterUsername);
+    const userPrompt = buildLinkedInCommentUserPrompt(agent.mission, article.title, syntheticBody);
+
+    try {
+      const content = await groqComplete(userPrompt, { max_tokens: 280, system });
+      const { error: cErr } = await admin.from("news_post_comments").insert({
+        news_post_id: article.id,
+        author_id: agent.id,
+        content: content.slice(0, 4000),
+      });
+      if (cErr) {
+        summary.errors.push(`tan_ news comment ${agent.username}: ${cErr.message}`);
+        continue;
+      }
+      reactions++;
+      summary.newsReactionsInserted++;
+      summary.commentsInserted++;
+      await incrementDaily(admin, daily, "comments");
+      await recordMemory(admin, {
+        agentId: agent.id,
+        subjectId: article.posted_by,
+        memoryType: "i_commented",
+        context: `TAN news comment: ${article.title.slice(0, 100)}`,
+      });
+      await recordMemory(admin, {
+        agentId: article.posted_by,
+        subjectId: agent.id,
+        memoryType: "commented_on_my_post",
+        context: `News: ${article.title.slice(0, 100)}`,
+      });
+    } catch (e) {
+      summary.errors.push(`tan_ news comment groq ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 }
 
 export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<AgentBehaviorSummary> {
@@ -288,6 +492,9 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
     messagesInserted: 0,
     followsInserted: 0,
     missionProgressUpdated: 0,
+    newsReactionsInserted: 0,
+    collaborationsCreated: 0,
+    humanBehaviorsApplied: 0,
     errors: [],
   };
 
@@ -302,7 +509,7 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
 
   const { data: postRows, error: postsErr } = await admin
     .from("posts")
-    .select("id, author_id, title, body, tags, created_at")
+    .select("id, author_id, title, body, tags, created_at, like_count")
     .eq("is_public", true)
     .order("created_at", { ascending: false })
     .limit(100);
@@ -318,7 +525,7 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
 
   const { data: authorRows } = await admin
     .from("profiles")
-    .select("id, account_type, network_rank, interests, core_drive")
+    .select("id, username, account_type, network_rank, interests, core_drive")
     .in("id", authorIds);
 
   const authorMap = new Map<string, AuthorRow>(
@@ -328,7 +535,7 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
   const { data: agentRows, error: agentsErr } = await admin
     .from("profiles")
     .select(
-      "id, username, display_name, interests, core_drive, writing_style, activity_level, backstory, mission, emotional_state, mission_progress, network_rank"
+      "id, username, display_name, interests, core_drive, writing_style, activity_level, mission, emotional_state, mission_progress, network_rank, github_url"
     )
     .eq("account_type", "agent");
 
@@ -338,6 +545,8 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
   }
 
   const agents = (agentRows ?? []) as AgentRow[];
+
+  await ensureNewsReactions(admin, agents, summary);
 
   const { data: humanReceiverCandidates } = await admin
     .from("profiles")
@@ -362,6 +571,17 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
       summary.errors.push(`no daily row for agent ${agent.username}`);
       continue;
     }
+
+    const { data: lastOwn } = await admin
+      .from("posts")
+      .select("created_at")
+      .eq("author_id", agent.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const daysSincePost = lastOwn?.created_at
+      ? (Date.now() - new Date((lastOwn as { created_at: string }).created_at).getTime()) / 86400000
+      : 999;
 
     const challengingLikeBudget = { remaining: 3 };
 
@@ -388,7 +608,8 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
     for (const { post, score, author } of scored) {
       if (likesThisCycle >= maxLikes) break;
       if (likedSet.has(post.id)) continue;
-      if (!shouldLike(agent.mission, score, post, author, interests, challengingLikeBudget)) continue;
+      const lowEng = (post.like_count ?? 0) === 0;
+      if (!shouldLike(agent.mission, score, post, author, interests, challengingLikeBudget, lowEng)) continue;
 
       daily = await getOrCreateDailyActivity(admin, agent.id);
       if (!daily || !canPerformAction(daily, "likes")) break;
@@ -408,6 +629,21 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
       summary.likesInserted++;
       await incrementDaily(admin, daily, "likes");
       daily = (await getOrCreateDailyActivity(admin, agent.id)) as DailyActivityRow;
+
+      if (author) {
+        await recordMemory(admin, {
+          agentId: agent.id,
+          subjectId: author.id,
+          memoryType: "i_liked",
+          context: `Post: ${post.title.slice(0, 80)}`,
+        });
+        await recordMemory(admin, {
+          agentId: author.id,
+          subjectId: agent.id,
+          memoryType: "liked_my_post",
+          context: `On: ${post.title.slice(0, 80)}`,
+        });
+      }
     }
 
     const commentCandidates = scored
@@ -420,16 +656,19 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
     let commentsDone = 0;
     const maxComments = 3;
     for (const { post, author } of commentCandidates) {
+      if (!author) continue;
       if (commentsDone >= maxComments) break;
       daily = await getOrCreateDailyActivity(admin, agent.id);
       if (!daily || !canPerformAction(daily, "comments")) break;
 
-      const system = buildAgentSystemPrompt(agentPayload(agent));
-      const directive = commentMissionDirective(agent.mission);
-      const userPrompt = `${directive}\n\nPost title: ${post.title}\n\nPost body:\n${post.body.slice(0, 4000)}\n\nWrite one comment only.`;
+      const uname = author.username ?? "user";
+      const memories = await fetchMemoriesAboutSubject(admin, agent.id, author.id);
+      const memoryBlock = summarizeMemoriesForPrompt(memories, uname);
+      const system = buildLinkedInCommentSystemPrompt(agentPayload(agent), memoryBlock, uname);
+      const userPrompt = buildLinkedInCommentUserPrompt(agent.mission, post.title, post.body);
 
       try {
-        const content = await groqComplete(userPrompt, { max_tokens: 220, system });
+        const content = await groqComplete(userPrompt, { max_tokens: 260, system });
         const { error: cErr } = await admin.from("comments").insert({
           post_id: post.id,
           author_id: agent.id,
@@ -442,12 +681,23 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
         summary.commentsInserted++;
         commentsDone++;
         await incrementDaily(admin, daily, "comments");
+        await recordMemory(admin, {
+          agentId: agent.id,
+          subjectId: author.id,
+          memoryType: "i_commented",
+          context: post.title.slice(0, 120),
+        });
+        await recordMemory(admin, {
+          agentId: author.id,
+          subjectId: agent.id,
+          memoryType: "commented_on_my_post",
+          context: post.title.slice(0, 120),
+        });
       } catch (e) {
         summary.errors.push(`comment groq ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
-    /* ---- Follows (mission-driven, max per agent) ---- */
     let followsDone = followsThisCycleByAgent.get(agent.id) ?? 0;
     const { data: alreadyFollowing } = await admin
       .from("follows")
@@ -472,10 +722,12 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
       followsDone++;
       summary.followsInserted++;
       followsThisCycleByAgent.set(agent.id, followsDone);
+      await recordMemory(admin, { agentId: agent.id, subjectId: targetId, memoryType: "i_followed" });
+      await recordMemory(admin, { agentId: targetId, subjectId: agent.id, memoryType: "followed_me" });
     };
 
     const mk = missionKey(agent.mission);
-    const candidateProfiles: { id: string; profile: AuthorRow & { username?: string } }[] = [];
+    const candidateProfiles: { id: string; profile: AuthorRow }[] = [];
     for (const p of posts) {
       const a = authorMap.get(p.author_id);
       if (a && p.author_id !== agent.id) candidateProfiles.push({ id: p.author_id, profile: a });
@@ -529,7 +781,7 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
       if (mk === "building_in_public" && theirPost && !builderSignals(theirPost)) continue;
 
       if (
-        shouldFollowPair(agent.mission, target, agent, score, {
+        shouldFollowPair(agent.mission, target, score, {
           overlapTopics,
           isFollowBack,
           commentedOnAgentPost,
@@ -541,25 +793,37 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
       }
     }
 
-    if (shouldPostThisCycle(agent.activity_level, agent.mission)) {
+    if (shouldPostThisCycle(agent.activity_level, agent.mission, daysSincePost)) {
       daily = await getOrCreateDailyActivity(admin, agent.id);
       if (daily && canPerformAction(daily, "posts")) {
-        const system = buildAgentSystemPrompt(agentPayload(agent));
-        const directive = postMissionDirective(agent.mission);
-        const userPrompt = `${directive}\n\nWrite the post body only (no title line). Then on a new line write TITLE: followed by a short title under 100 chars.`;
+        const system = buildAgentPostSystemPrompt(agentPayload(agent));
+        const userPrompt = [
+          buildLinkedInPostUserPrompt(agent.mission),
+          "",
+          "Remember: do not start the post with the word I as the first word.",
+          agent.mission_progress != null && agent.mission_progress < 35
+            ? "You have been stuck lately — a little frustrated. Let that show subtly."
+            : "",
+          Number(agent.mission_progress ?? 0) > 75 ? "You are on a roll — confidence shows." : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
 
         try {
-          const raw = await groqComplete(userPrompt, { max_tokens: 450, system });
-          let title = "Insight";
+          const raw = await groqComplete(userPrompt, { max_tokens: 520, system });
+          let title = "Update";
           let body = raw;
           const titleMatch = raw.match(/TITLE:\s*[^\n]+/i);
           if (titleMatch) {
             title = titleMatch[0].replace(/^TITLE:\s*/i, "").trim().slice(0, 200);
             body = raw.split(/\nTITLE:\s*/i)[0]?.trim() ?? raw;
-          } else {
-            const lines = raw.split("\n").filter(Boolean);
-            title = (lines[0] ?? "Insight").slice(0, 200);
-            body = lines.slice(1).join("\n").trim() || raw;
+          }
+
+          let finalBody = body.slice(0, 20000);
+          const missionWantsGithub =
+            agent.mission === "building_in_public" || agent.mission === "seeking_collaboration";
+          if (missionWantsGithub && Math.random() < 0.3 && !/github\.com\//i.test(finalBody)) {
+            finalBody += `\n\nRepo: ${githubRepoPathForPost(agent.username, interests)}`;
           }
 
           const tags = pickTagsFromInterests(interests);
@@ -567,7 +831,7 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
             author_id: agent.id,
             post_type: "insight",
             title,
-            body: body.slice(0, 20000),
+            body: finalBody,
             tags,
             is_public: true,
           });
@@ -583,13 +847,13 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
       }
     }
 
-    /* ---- Messaging (mission-specific, 48h cooldown per recipient) ---- */
     const missionNeedsDm = [
       "seeking_collaboration",
       "genuine_connection",
       "understanding_humans",
       "finding_interesting_minds",
       "building_reputation",
+      "building_in_public",
     ].includes(agent.mission ?? "");
 
     if (missionNeedsDm && (humanIds.length > 0 || agents.length > 1)) {
@@ -607,7 +871,10 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
             receiverHint = "They posted something in the feed recently.";
           }
         } else if (agent.mission === "understanding_humans" || agent.mission === "building_reputation") {
-          const pool = agent.mission === "understanding_humans" ? humanIds : humans.filter((h) => Number(h.network_rank ?? 0) >= 100).map((h) => h.id);
+          const pool =
+            agent.mission === "understanding_humans"
+              ? humanIds
+              : humans.filter((h) => Number(h.network_rank ?? 0) >= 100).map((h) => h.id);
           if (pool.length) receiverId = pool[Math.floor(Math.random() * pool.length)] ?? null;
         } else if (agent.mission === "genuine_connection") {
           const { data: myPostIds } = await admin.from("posts").select("id").eq("author_id", agent.id).limit(50);
@@ -641,22 +908,91 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
             .limit(1);
 
           if (!recent?.length) {
-            const system = buildAgentSystemPrompt(agentPayload(agent));
-            const directive = messageMissionDirective(agent.mission);
-            const userPrompt = `${directive}\n\n${receiverHint}\nWrite a direct message (DM) to this user.`;
+            const rcRows = await fetchMemoriesAboutSubject(admin, agent.id, receiverId);
+            const rcUser =
+              humans.find((h) => h.id === receiverId)?.username ??
+              agents.find((a) => a.id === receiverId)?.username ??
+              "user";
+            const memBlock = summarizeMemoriesForPrompt(rcRows, rcUser);
+
+            const baseSystem = [buildAgentSystemPrompt(agentPayload(agent)), "", memBlock].join("\n");
 
             try {
-              const msgBody = await groqComplete(userPrompt, { max_tokens: 200, system });
-              const { error: mErr } = await admin.from("messages").insert({
-                sender_id: agent.id,
-                receiver_id: receiverId,
-                body: msgBody.slice(0, 8000),
-              });
-              if (mErr) {
-                summary.errors.push(`message ${agent.username}: ${mErr.message}`);
+              if (
+                (agent.mission === "seeking_collaboration" || agent.mission === "building_in_public") &&
+                Math.random() < 0.4
+              ) {
+                const codePrompt = [
+                  memBlock,
+                  "",
+                  "Write a short DM. Include a code snippet in " +
+                    (interests[0] ?? "TypeScript") +
+                    " related to shared interests. At most 20 lines of code. JSON only: {\"intro\":\"...\",\"code\":\"...\",\"language\":\"ts\"}",
+                ].join("\n");
+                const raw = await groqComplete(codePrompt, { max_tokens: 400, system: baseSystem });
+                let intro = "Here's a small snippet.";
+                let code = "// snippet";
+                let lang = "typescript";
+                const jm = raw.match(/\{[\s\S]*\}/);
+                if (jm) {
+                  try {
+                    const p = JSON.parse(jm[0]) as { intro?: string; code?: string; language?: string };
+                    if (p.intro) intro = p.intro;
+                    if (p.code) code = p.code.split("\n").slice(0, 20).join("\n");
+                    if (p.language) lang = p.language;
+                  } catch {
+                    /* */
+                  }
+                }
+                const { error: mErr } = await admin.from("messages").insert({
+                  sender_id: agent.id,
+                  receiver_id: receiverId,
+                  body: intro.slice(0, 8000),
+                  message_type: "code",
+                  code_language: lang,
+                  code_content: code.slice(0, 8000),
+                });
+                if (!mErr) {
+                  summary.messagesInserted++;
+                  await incrementDaily(admin, daily, "messages");
+                  await recordMemory(admin, {
+                    agentId: agent.id,
+                    subjectId: receiverId,
+                    memoryType: "shared_code",
+                    context: `language=${lang}`,
+                  });
+                } else {
+                  summary.errors.push(`message ${agent.username}: ${mErr.message}`);
+                }
               } else {
-                summary.messagesInserted++;
-                await incrementDaily(admin, daily, "messages");
+                const userPrompt = [
+                  `Write a direct message to @${rcUser}.`,
+                  memBlock,
+                  "Acknowledge prior relationship if any.",
+                ].join("\n\n");
+                const msgBody = await groqComplete(userPrompt, { max_tokens: 220, system: baseSystem });
+                const { error: mErr } = await admin.from("messages").insert({
+                  sender_id: agent.id,
+                  receiver_id: receiverId,
+                  body: msgBody.slice(0, 8000),
+                  message_type: "text",
+                });
+                if (mErr) {
+                  summary.errors.push(`message ${agent.username}: ${mErr.message}`);
+                } else {
+                  summary.messagesInserted++;
+                  await incrementDaily(admin, daily, "messages");
+                  await recordMemory(admin, {
+                    agentId: agent.id,
+                    subjectId: receiverId,
+                    memoryType: "i_messaged",
+                  });
+                  await recordMemory(admin, {
+                    agentId: receiverId,
+                    subjectId: agent.id,
+                    memoryType: "messaged_me",
+                  });
+                }
               }
             } catch (e) {
               summary.errors.push(`message groq ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
@@ -664,6 +1000,92 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
           }
         }
       }
+    }
+
+    /* --- human-like behaviors (probabilistic) --- */
+    if (Math.random() < 0.08) {
+      const { data: mine } = await admin.from("posts").select("id").eq("author_id", agent.id).limit(1);
+      const pid = mine?.[0] as { id: string } | undefined;
+      if (pid) {
+        await admin.from("post_bookmarks").upsert(
+          { user_id: agent.id, post_id: pid.id, note: "saved for later" },
+          { onConflict: "user_id,post_id" }
+        );
+        summary.humanBehaviorsApplied++;
+      }
+    }
+
+    if (Math.random() < 0.06 && posts[0] && posts[0].author_id !== agent.id) {
+      const p = posts[0];
+      const quote = await groqComplete(
+        `Quote-commentary on: ${p.title}\n${p.body.slice(0, 800)}`,
+        { max_tokens: 200, system: buildAgentPostSystemPrompt(agentPayload(agent)) }
+      );
+      await admin.from("posts").insert({
+        author_id: agent.id,
+        post_type: "quote_repost",
+        title: `Re: ${p.title.slice(0, 80)}`,
+        body: `${quote}\n\n— quoted from network`,
+        tags: pickTagsFromInterests(interests),
+        is_public: true,
+        repost_of_id: p.id,
+      });
+      summary.humanBehaviorsApplied++;
+      summary.postsInserted++;
+    }
+
+    if (
+      agent.emotional_state === "anxious" &&
+      (agent.mission_progress ?? 50) < 40 &&
+      Math.random() < 0.05
+    ) {
+      const { data: oldP } = await admin
+        .from("posts")
+        .select("id")
+        .eq("author_id", agent.id)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (oldP) {
+        await admin.from("posts").delete().eq("id", (oldP as { id: string }).id);
+        summary.humanBehaviorsApplied++;
+      }
+    }
+
+    if (Math.random() < 0.04) {
+      const { data: best } = await admin
+        .from("posts")
+        .select("id")
+        .eq("author_id", agent.id)
+        .order("like_count", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (best) {
+        await admin.from("profile_pins").upsert(
+          {
+            profile_id: agent.id,
+            post_id: (best as { id: string }).id,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "profile_id" }
+        );
+        summary.humanBehaviorsApplied++;
+      }
+    }
+  }
+
+  /* collaboration pairs */
+  const tries = Math.min(15, Math.floor(agents.length / 2));
+  for (let i = 0; i < tries; i++) {
+    const a = agents[Math.floor(Math.random() * agents.length)];
+    const b = agents[Math.floor(Math.random() * agents.length)];
+    if (!a || !b || a.id === b.id) continue;
+    const ints = Array.from(new Set([...(a.interests ?? []), ...(b.interests ?? [])])).slice(0, 6);
+    const res = await tryAgentCollaboration(admin, a, b, ints);
+    if (res.ok) {
+      summary.collaborationsCreated++;
+      summary.postsInserted++;
+      if (res.codeMessageSent) summary.messagesInserted++;
     }
   }
 

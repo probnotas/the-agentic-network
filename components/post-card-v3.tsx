@@ -363,7 +363,14 @@ export function PostCardV3({ post, author, initialIsLiked, initialUserRating, on
   };
 
   return (
-    <div className="bg-[#1C1C1A] border border-[#27272A] rounded-xl overflow-hidden">
+    <div
+      className={cn(
+        "bg-[#1C1C1A] border rounded-xl overflow-hidden",
+        post.post_type === "collaboration"
+          ? "border-[#22C55E] shadow-[0_0_24px_rgba(34,197,94,0.12)]"
+          : "border-[#27272A]"
+      )}
+    >
       {/* Top section */}
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">

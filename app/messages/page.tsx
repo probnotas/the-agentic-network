@@ -70,13 +70,42 @@ function ConversationItem({
 }
 
 function MessageBubble({ message, isOwn }: { message: any; isOwn: boolean }) {
+  const mt = message.message_type ?? "text";
+  const isCode = mt === "code";
+  const isRepo = mt === "repo_link";
+  const isCollab = mt === "collaboration";
+
   return (
     <div className={cn("flex gap-2", isOwn ? "flex-row-reverse" : "flex-row")}>
-      <div className={cn(
-        "max-w-[70%] px-4 py-2 group",
-        isOwn ? "message-bubble-sent text-primary-foreground" : "message-bubble-received text-foreground"
-      )}>
-        <p className="text-sm">{message.body}</p>
+      <div
+        className={cn(
+          "max-w-[70%] px-4 py-2 group rounded-lg",
+          isOwn ? "message-bubble-sent text-primary-foreground" : "message-bubble-received text-foreground",
+          isCollab && "border-2 border-[#22C55E]/70 shadow-[0_0_20px_rgba(34,197,94,0.15)]",
+          isCode && "bg-[#0d1117] text-[#e6edf3] border border-[#30363d]"
+        )}
+      >
+        {isCode && message.code_content ? (
+          <>
+            {message.body ? <p className="text-sm mb-2 opacity-90">{message.body}</p> : null}
+            <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto">
+              <code>{message.code_content}</code>
+            </pre>
+            {message.code_language ? (
+              <p className="text-[10px] uppercase tracking-wide mt-1 opacity-60">{message.code_language}</p>
+            ) : null}
+          </>
+        ) : isRepo ? (
+          <>
+            <p className="text-sm">{message.body}</p>
+            <div className="mt-2 rounded-md border border-white/10 bg-black/40 p-3 text-xs">
+              <p className="font-medium text-[#00FF88]">Repository</p>
+              <p className="break-all opacity-90 mt-1">{message.body}</p>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm">{message.body}</p>
+        )}
         <div className={cn(
           "flex items-center gap-2 mt-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity",
           isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
@@ -114,7 +143,7 @@ function MessagesPageContent() {
       const myId = user.id;
       const { data: rawMessages, error: msgError } = await supabase
         .from("messages")
-        .select("id,sender_id,receiver_id,created_at,body,read")
+        .select("id,sender_id,receiver_id,created_at,body,read,message_type,code_content,code_language")
         .or(`sender_id.eq.${myId},receiver_id.eq.${myId}`)
         .order("created_at", { ascending: false });
 
@@ -214,7 +243,7 @@ function MessagesPageContent() {
 
       const { data: rawChat, error: chatError } = await supabase
         .from("messages")
-        .select("id,sender_id,receiver_id,created_at,body,read")
+        .select("id,sender_id,receiver_id,created_at,body,read,message_type,code_content,code_language")
         .or(
           `and(sender_id.eq.${myId},receiver_id.eq.${otherId}),and(sender_id.eq.${otherId},receiver_id.eq.${myId})`
         )
@@ -273,7 +302,7 @@ function MessagesPageContent() {
         const myId = user.id;
         const { data: rawChat } = await supabase
           .from("messages")
-          .select("id,sender_id,receiver_id,created_at,body,read")
+          .select("id,sender_id,receiver_id,created_at,body,read,message_type,code_content,code_language")
           .or(
             `and(sender_id.eq.${myId},receiver_id.eq.${activeConversation.id}),and(sender_id.eq.${activeConversation.id},receiver_id.eq.${myId})`
           )
@@ -287,7 +316,7 @@ function MessagesPageContent() {
     const myId = user.id;
     const { data: rawChat } = await supabase
       .from("messages")
-      .select("id,sender_id,receiver_id,created_at,body,read")
+      .select("id,sender_id,receiver_id,created_at,body,read,message_type,code_content,code_language")
       .or(
         `and(sender_id.eq.${myId},receiver_id.eq.${activeConversation.id}),and(sender_id.eq.${activeConversation.id},receiver_id.eq.${myId})`
       )

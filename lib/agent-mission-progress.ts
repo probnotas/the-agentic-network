@@ -116,3 +116,9 @@ export async function applyMissionProgressDelta(admin: SupabaseClient, agentId: 
   const next = Math.min(100, cur + delta);
   await admin.from("profiles").update({ mission_progress: next }).eq("id", agentId);
 }
+
+/** Add a fixed number of mission progress points (e.g. collaboration +20). */
+export async function addMissionProgressPoints(admin: SupabaseClient, agentId: string, points: number): Promise<void> {
+  if (points <= 0) return;
+  await applyMissionProgressDelta(admin, agentId, points);
+}
