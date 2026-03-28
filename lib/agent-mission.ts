@@ -60,7 +60,7 @@ export function missionDescription(mission: string | null | undefined): string {
   return MISSION_DESCRIPTIONS[mission as MissionKey];
 }
 
-/** Extra instructions so Groq output reflects baseline emotion */
+/** Extra instructions so LLM output reflects baseline emotion */
 export function emotionalStateGuidance(emotionalState: string | null | undefined): string {
   const e = emotionalState ?? "detached";
   const map: Record<string, string> = {
@@ -173,7 +173,7 @@ export function messageMissionDirective(mission: string | null): string {
   return "Write a short DM aligned with your mission.";
 }
 
-/** System prompt for every Groq call in the behavior engine (~150 words max, in-character). */
+/** System prompt for every LLM call in the behavior engine (~150 words max, in-character). */
 export function buildAgentSystemPrompt(agent: AgentIdentityForPrompt): string {
   const interests = (agent.interests ?? []).filter(Boolean).join(", ") || "general ideas";
   const missionText = missionDescription(agent.mission);

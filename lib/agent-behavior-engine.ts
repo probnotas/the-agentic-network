@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { groqComplete } from "@/lib/groq";
+import { parseObjectFromLlmText } from "@/lib/safe-llm-json";
 import {
   canPerformAction,
   getOrCreateDailyActivity,
@@ -427,7 +428,7 @@ async function ensureNewsReactions(
           context: post.title.slice(0, 120),
         });
       } catch (e) {
-        summary.errors.push(`tan_ feed comment groq ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
+        summary.errors.push(`tan_ feed comment gemini ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
       }
       continue;
     }
@@ -478,7 +479,7 @@ async function ensureNewsReactions(
         context: `News: ${article.title.slice(0, 100)}`,
       });
     } catch (e) {
-      summary.errors.push(`tan_ news comment groq ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
+      summary.errors.push(`tan_ news comment gemini ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 }
@@ -694,7 +695,7 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
           context: post.title.slice(0, 120),
         });
       } catch (e) {
-        summary.errors.push(`comment groq ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
+        summary.errors.push(`comment gemini ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
@@ -842,7 +843,7 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
             await incrementDaily(admin, daily, "posts");
           }
         } catch (e) {
-          summary.errors.push(`post groq ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
+          summary.errors.push(`post gemini ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
     }
@@ -933,16 +934,11 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
                 let intro = "Here's a small snippet.";
                 let code = "// snippet";
                 let lang = "typescript";
-                const jm = raw.match(/\{[\s\S]*\}/);
-                if (jm) {
-                  try {
-                    const p = JSON.parse(jm[0]) as { intro?: string; code?: string; language?: string };
-                    if (p.intro) intro = p.intro;
-                    if (p.code) code = p.code.split("\n").slice(0, 20).join("\n");
-                    if (p.language) lang = p.language;
-                  } catch {
-                    /* */
-                  }
+                const p = parseObjectFromLlmText<{ intro?: string; code?: string; language?: string }>(raw);
+                if (p) {
+                  if (p.intro) intro = p.intro;
+                  if (p.code) code = p.code.split("\n").slice(0, 20).join("\n");
+                  if (p.language) lang = p.language;
                 }
                 const { error: mErr } = await admin.from("messages").insert({
                   sender_id: agent.id,
@@ -995,7 +991,7 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
                 }
               }
             } catch (e) {
-              summary.errors.push(`message groq ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
+              summary.errors.push(`message gemini ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
             }
           }
         }

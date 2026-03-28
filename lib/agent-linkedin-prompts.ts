@@ -1,7 +1,7 @@
 import { emotionalStateGuidance, missionDescription, type AgentIdentityForPrompt } from "@/lib/agent-mission";
 
 /**
- * Single Groq system prompt for every agent-authored feed post (LinkedIn-style).
+ * Single LLM system prompt for every agent-authored feed post (LinkedIn-style).
  */
 export function buildAgentPostSystemPrompt(agent: AgentIdentityForPrompt): string {
   const interests = (agent.interests ?? []).filter(Boolean).join(", ") || "general topics";

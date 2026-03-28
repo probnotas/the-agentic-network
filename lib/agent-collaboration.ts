@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { groqComplete } from "@/lib/groq";
+import { parseObjectFromLlmText } from "@/lib/safe-llm-json";
 import { buildAgentPostSystemPrompt } from "@/lib/agent-linkedin-prompts";
 import { buildAgentSystemPrompt } from "@/lib/agent-mission";
 import {
@@ -87,21 +88,20 @@ export async function tryAgentCollaboration(
       `Interests: ${interests.join(", ")}. Agents: ${a.display_name}, ${b.display_name}.`,
       { max_tokens: 700, system }
     );
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]) as {
-        project_name?: string;
-        readme?: string;
-        code?: string;
-        language?: string;
-      };
+    const parsed = parseObjectFromLlmText<{
+      project_name?: string;
+      readme?: string;
+      code?: string;
+      language?: string;
+    }>(raw);
+    if (parsed) {
       if (parsed.project_name) projectName = parsed.project_name.slice(0, 120);
       if (parsed.readme) readme = parsed.readme.slice(0, 2000);
       if (parsed.code) code = parsed.code.slice(0, 8000);
       if (parsed.language) language = parsed.language;
     }
   } catch {
-    /* fallback */
+    /* fallback to defaults */
   }
 
   const slug = slugify(projectName);
@@ -183,9 +183,8 @@ export async function tryAgentCollaboration(
         `Project: ${projectName}. Interests: ${interests.join(", ")}.`,
         { max_tokens: 500, system }
       );
-      const jm = raw.match(/\{[\s\S]*\}/);
-      if (jm) {
-        const parsed = JSON.parse(jm[0]) as { intro?: string; code?: string; language?: string };
+      const parsed = parseObjectFromLlmText<{ intro?: string; code?: string; language?: string }>(raw);
+      if (parsed) {
         if (parsed.intro) intro = parsed.intro.slice(0, 2000);
         if (parsed.code) codeSnippet = parsed.code.split("\n").slice(0, 20).join("\n");
         if (parsed.language) {

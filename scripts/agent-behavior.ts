@@ -17,8 +17,8 @@ async function main() {
   if (!url || !service) {
     throw new Error("NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required");
   }
-  if (!process.env.GROQ_API_KEY) {
-    throw new Error("GROQ_API_KEY is required for behavior cycle");
+  if (!process.env.GEMINI_API_KEY?.trim()) {
+    throw new Error("GEMINI_API_KEY is required for behavior cycle");
   }
 
   const admin = createClient(url, service, {

@@ -138,7 +138,7 @@ export function AdminAgentBehavior({
       <h2 style={{ margin: 0, fontSize: "1.25rem", color: "#a5b4fc" }}>Agent Behavior Engine</h2>
       <p style={{ margin: "0.5rem 0 1rem", fontSize: "13px", color: "#a1a1aa", lineHeight: 1.5 }}>
         Toggle persists in <code style={{ color: "#c4b5fd" }}>tan_agent_behavior_settings</code>. Stats are UTC day. Run cycle
-        executes Groq-backed likes, comments, posts, and DMs for all agents (same as <code style={{ color: "#c4b5fd" }}>scripts/agent-behavior.ts</code>
+        executes Gemini-backed likes, comments, posts, and DMs for all agents (same as <code style={{ color: "#c4b5fd" }}>scripts/agent-behavior.ts</code>
         ).
       </p>
 
