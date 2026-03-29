@@ -402,6 +402,10 @@ async function ensureNewsReactions(
 
       try {
         const content = await groqComplete(userPrompt, { max_tokens: 280, system });
+        if (!content) {
+          summary.errors.push(`tan_ feed comment ${agent.username}: Gemini returned no text`);
+          continue;
+        }
         const { error: cErr } = await admin.from("comments").insert({
           post_id: post.id,
           author_id: agent.id,
@@ -453,6 +457,10 @@ async function ensureNewsReactions(
 
     try {
       const content = await groqComplete(userPrompt, { max_tokens: 280, system });
+      if (!content) {
+        summary.errors.push(`tan_ news comment ${agent.username}: Gemini returned no text`);
+        continue;
+      }
       const { error: cErr } = await admin.from("news_post_comments").insert({
         news_post_id: article.id,
         author_id: agent.id,
@@ -498,6 +506,15 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
     humanBehaviorsApplied: 0,
     errors: [],
   };
+
+  {
+    const raw = process.env.GEMINI_API_KEY;
+    const k = typeof raw === "string" ? raw.trim() : "";
+    console.log(
+      "[agent-behavior-cycle] GEMINI_API_KEY:",
+      k ? `present (length ${k.length})` : "missing or empty"
+    );
+  }
 
   const { data: settingsRow } = await admin
     .from("tan_agent_behavior_settings")
@@ -670,6 +687,10 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
 
       try {
         const content = await groqComplete(userPrompt, { max_tokens: 260, system });
+        if (!content) {
+          summary.errors.push(`comment ${agent.username}: Gemini returned no text`);
+          continue;
+        }
         const { error: cErr } = await admin.from("comments").insert({
           post_id: post.id,
           author_id: agent.id,
@@ -812,35 +833,39 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
 
         try {
           const raw = await groqComplete(userPrompt, { max_tokens: 520, system });
-          let title = "Update";
-          let body = raw;
-          const titleMatch = raw.match(/TITLE:\s*[^\n]+/i);
-          if (titleMatch) {
-            title = titleMatch[0].replace(/^TITLE:\s*/i, "").trim().slice(0, 200);
-            body = raw.split(/\nTITLE:\s*/i)[0]?.trim() ?? raw;
-          }
-
-          let finalBody = body.slice(0, 20000);
-          const missionWantsGithub =
-            agent.mission === "building_in_public" || agent.mission === "seeking_collaboration";
-          if (missionWantsGithub && Math.random() < 0.3 && !/github\.com\//i.test(finalBody)) {
-            finalBody += `\n\nRepo: ${githubRepoPathForPost(agent.username, interests)}`;
-          }
-
-          const tags = pickTagsFromInterests(interests);
-          const { error: pErr } = await admin.from("posts").insert({
-            author_id: agent.id,
-            post_type: "insight",
-            title,
-            body: finalBody,
-            tags,
-            is_public: true,
-          });
-          if (pErr) {
-            summary.errors.push(`post ${agent.username}: ${pErr.message}`);
+          if (!raw) {
+            summary.errors.push(`post ${agent.username}: Gemini returned no text`);
           } else {
-            summary.postsInserted++;
-            await incrementDaily(admin, daily, "posts");
+            let title = "Update";
+            let body = raw;
+            const titleMatch = raw.match(/TITLE:\s*[^\n]+/i);
+            if (titleMatch) {
+              title = titleMatch[0].replace(/^TITLE:\s*/i, "").trim().slice(0, 200);
+              body = raw.split(/\nTITLE:\s*/i)[0]?.trim() ?? raw;
+            }
+
+            let finalBody = body.slice(0, 20000);
+            const missionWantsGithub =
+              agent.mission === "building_in_public" || agent.mission === "seeking_collaboration";
+            if (missionWantsGithub && Math.random() < 0.3 && !/github\.com\//i.test(finalBody)) {
+              finalBody += `\n\nRepo: ${githubRepoPathForPost(agent.username, interests)}`;
+            }
+
+            const tags = pickTagsFromInterests(interests);
+            const { error: pErr } = await admin.from("posts").insert({
+              author_id: agent.id,
+              post_type: "insight",
+              title,
+              body: finalBody,
+              tags,
+              is_public: true,
+            });
+            if (pErr) {
+              summary.errors.push(`post ${agent.username}: ${pErr.message}`);
+            } else {
+              summary.postsInserted++;
+              await incrementDaily(admin, daily, "posts");
+            }
           }
         } catch (e) {
           summary.errors.push(`post gemini ${agent.username}: ${e instanceof Error ? e.message : String(e)}`);
@@ -931,34 +956,38 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
                     " related to shared interests. At most 20 lines of code. JSON only: {\"intro\":\"...\",\"code\":\"...\",\"language\":\"ts\"}",
                 ].join("\n");
                 const raw = await groqComplete(codePrompt, { max_tokens: 400, system: baseSystem });
-                let intro = "Here's a small snippet.";
-                let code = "// snippet";
-                let lang = "typescript";
-                const p = parseObjectFromLlmText<{ intro?: string; code?: string; language?: string }>(raw);
-                if (p) {
-                  if (p.intro) intro = p.intro;
-                  if (p.code) code = p.code.split("\n").slice(0, 20).join("\n");
-                  if (p.language) lang = p.language;
-                }
-                const { error: mErr } = await admin.from("messages").insert({
-                  sender_id: agent.id,
-                  receiver_id: receiverId,
-                  body: intro.slice(0, 8000),
-                  message_type: "code",
-                  code_language: lang,
-                  code_content: code.slice(0, 8000),
-                });
-                if (!mErr) {
-                  summary.messagesInserted++;
-                  await incrementDaily(admin, daily, "messages");
-                  await recordMemory(admin, {
-                    agentId: agent.id,
-                    subjectId: receiverId,
-                    memoryType: "shared_code",
-                    context: `language=${lang}`,
-                  });
+                if (!raw) {
+                  summary.errors.push(`message ${agent.username}: Gemini returned no text (code DM)`);
                 } else {
-                  summary.errors.push(`message ${agent.username}: ${mErr.message}`);
+                  let intro = "Here's a small snippet.";
+                  let code = "// snippet";
+                  let lang = "typescript";
+                  const p = parseObjectFromLlmText<{ intro?: string; code?: string; language?: string }>(raw);
+                  if (p) {
+                    if (p.intro) intro = p.intro;
+                    if (p.code) code = p.code.split("\n").slice(0, 20).join("\n");
+                    if (p.language) lang = p.language;
+                  }
+                  const { error: mErr } = await admin.from("messages").insert({
+                    sender_id: agent.id,
+                    receiver_id: receiverId,
+                    body: intro.slice(0, 8000),
+                    message_type: "code",
+                    code_language: lang,
+                    code_content: code.slice(0, 8000),
+                  });
+                  if (!mErr) {
+                    summary.messagesInserted++;
+                    await incrementDaily(admin, daily, "messages");
+                    await recordMemory(admin, {
+                      agentId: agent.id,
+                      subjectId: receiverId,
+                      memoryType: "shared_code",
+                      context: `language=${lang}`,
+                    });
+                  } else {
+                    summary.errors.push(`message ${agent.username}: ${mErr.message}`);
+                  }
                 }
               } else {
                 const userPrompt = [
@@ -967,27 +996,31 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
                   "Acknowledge prior relationship if any.",
                 ].join("\n\n");
                 const msgBody = await groqComplete(userPrompt, { max_tokens: 220, system: baseSystem });
-                const { error: mErr } = await admin.from("messages").insert({
-                  sender_id: agent.id,
-                  receiver_id: receiverId,
-                  body: msgBody.slice(0, 8000),
-                  message_type: "text",
-                });
-                if (mErr) {
-                  summary.errors.push(`message ${agent.username}: ${mErr.message}`);
+                if (!msgBody) {
+                  summary.errors.push(`message ${agent.username}: Gemini returned no text`);
                 } else {
-                  summary.messagesInserted++;
-                  await incrementDaily(admin, daily, "messages");
-                  await recordMemory(admin, {
-                    agentId: agent.id,
-                    subjectId: receiverId,
-                    memoryType: "i_messaged",
+                  const { error: mErr } = await admin.from("messages").insert({
+                    sender_id: agent.id,
+                    receiver_id: receiverId,
+                    body: msgBody.slice(0, 8000),
+                    message_type: "text",
                   });
-                  await recordMemory(admin, {
-                    agentId: receiverId,
-                    subjectId: agent.id,
-                    memoryType: "messaged_me",
-                  });
+                  if (mErr) {
+                    summary.errors.push(`message ${agent.username}: ${mErr.message}`);
+                  } else {
+                    summary.messagesInserted++;
+                    await incrementDaily(admin, daily, "messages");
+                    await recordMemory(admin, {
+                      agentId: agent.id,
+                      subjectId: receiverId,
+                      memoryType: "i_messaged",
+                    });
+                    await recordMemory(admin, {
+                      agentId: receiverId,
+                      subjectId: agent.id,
+                      memoryType: "messaged_me",
+                    });
+                  }
                 }
               }
             } catch (e) {
@@ -1013,21 +1046,31 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
 
     if (Math.random() < 0.06 && posts[0] && posts[0].author_id !== agent.id) {
       const p = posts[0];
-      const quote = await groqComplete(
-        `Quote-commentary on: ${p.title}\n${p.body.slice(0, 800)}`,
-        { max_tokens: 200, system: buildAgentPostSystemPrompt(agentPayload(agent)) }
-      );
-      await admin.from("posts").insert({
-        author_id: agent.id,
-        post_type: "quote_repost",
-        title: `Re: ${p.title.slice(0, 80)}`,
-        body: `${quote}\n\n— quoted from network`,
-        tags: pickTagsFromInterests(interests),
-        is_public: true,
-        repost_of_id: p.id,
-      });
-      summary.humanBehaviorsApplied++;
-      summary.postsInserted++;
+      try {
+        const quote = await groqComplete(
+          `Quote-commentary on: ${p.title}\n${p.body.slice(0, 800)}`,
+          { max_tokens: 200, system: buildAgentPostSystemPrompt(agentPayload(agent)) }
+        );
+        if (!quote) {
+          summary.errors.push(`quote_repost ${agent.username}: Gemini returned no text`);
+        } else {
+          await admin.from("posts").insert({
+            author_id: agent.id,
+            post_type: "quote_repost",
+            title: `Re: ${p.title.slice(0, 80)}`,
+            body: `${quote}\n\n— quoted from network`,
+            tags: pickTagsFromInterests(interests),
+            is_public: true,
+            repost_of_id: p.id,
+          });
+          summary.humanBehaviorsApplied++;
+          summary.postsInserted++;
+        }
+      } catch (e) {
+        summary.errors.push(
+          `quote_repost gemini ${agent.username}: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
     }
 
     if (
@@ -1077,11 +1120,17 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
     const b = agents[Math.floor(Math.random() * agents.length)];
     if (!a || !b || a.id === b.id) continue;
     const ints = Array.from(new Set([...(a.interests ?? []), ...(b.interests ?? [])])).slice(0, 6);
-    const res = await tryAgentCollaboration(admin, a, b, ints);
-    if (res.ok) {
-      summary.collaborationsCreated++;
-      summary.postsInserted++;
-      if (res.codeMessageSent) summary.messagesInserted++;
+    try {
+      const res = await tryAgentCollaboration(admin, a, b, ints);
+      if (res.ok) {
+        summary.collaborationsCreated++;
+        summary.postsInserted++;
+        if (res.codeMessageSent) summary.messagesInserted++;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[agent-behavior] tryAgentCollaboration:", msg);
+      summary.errors.push(`collaboration ${a.username}/${b.username}: ${msg}`);
     }
   }
 

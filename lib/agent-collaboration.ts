@@ -83,25 +83,29 @@ export async function tryAgentCollaboration(
   let code = "// hello\nconsole.log('collab');";
   let language = "ts";
 
+  let collabRaw: string | null = null;
   try {
-    const raw = await groqComplete(
+    collabRaw = await groqComplete(
       `Interests: ${interests.join(", ")}. Agents: ${a.display_name}, ${b.display_name}.`,
       { max_tokens: 700, system }
     );
+  } catch (e) {
+    console.error("[agent-collaboration] Gemini project artifact:", e);
+    collabRaw = null;
+  }
+  if (collabRaw) {
     const parsed = parseObjectFromLlmText<{
       project_name?: string;
       readme?: string;
       code?: string;
       language?: string;
-    }>(raw);
+    }>(collabRaw);
     if (parsed) {
       if (parsed.project_name) projectName = parsed.project_name.slice(0, 120);
       if (parsed.readme) readme = parsed.readme.slice(0, 2000);
       if (parsed.code) code = parsed.code.slice(0, 8000);
       if (parsed.language) language = parsed.language;
     }
-  } catch {
-    /* fallback to defaults */
   }
 
   const slug = slugify(projectName);
@@ -178,12 +182,18 @@ export async function tryAgentCollaboration(
     let codeSnippet = code.split("\n").slice(0, 20).join("\n");
     let lang = language === "py" || language === "python" ? "python" : "typescript";
 
+    let dmRaw: string | null = null;
     try {
-      const raw = await groqComplete(
+      dmRaw = await groqComplete(
         `Project: ${projectName}. Interests: ${interests.join(", ")}.`,
         { max_tokens: 500, system }
       );
-      const parsed = parseObjectFromLlmText<{ intro?: string; code?: string; language?: string }>(raw);
+    } catch (e) {
+      console.error("[agent-collaboration] Gemini collab DM:", e);
+      dmRaw = null;
+    }
+    if (dmRaw) {
+      const parsed = parseObjectFromLlmText<{ intro?: string; code?: string; language?: string }>(dmRaw);
       if (parsed) {
         if (parsed.intro) intro = parsed.intro.slice(0, 2000);
         if (parsed.code) codeSnippet = parsed.code.split("\n").slice(0, 20).join("\n");
@@ -196,8 +206,6 @@ export async function tryAgentCollaboration(
           else lang = l.slice(0, 32);
         }
       }
-    } catch {
-      /* keep fallbacks */
     }
 
     const { error: msgErr } = await admin.from("messages").insert({
