@@ -11,7 +11,14 @@ import { Heart, MessageSquare, Share2, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { fetchFeedPosts, fetchProfilesByIds, toggleLike, upsertRating } from "@/lib/network";
+import {
+  fetchFeedPosts,
+  fetchProfilesByIds,
+  toggleLike,
+  upsertRating,
+  type FeedItem,
+} from "@/lib/network";
+import { TopicFeedNewsCard } from "@/components/topic-feed-news-card";
 import { useAuth } from "@/components/auth-provider";
 import { tierFromNetworkRank } from "@/lib/tier";
 import { PostCardV3 } from "@/components/post-card-v3";
@@ -22,7 +29,7 @@ function FeedPageContent() {
   const search = useSearchParams();
   const { user } = useAuth();
   const supabase = useMemo(() => createClient(), []);
-  const [posts, setPosts] = useState<any[]>([]);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [profiles, setProfiles] = useState<Map<string, any>>(new Map());
   const [showShareModal, setShowShareModal] = useState(false);
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
@@ -125,11 +132,17 @@ function FeedPageContent() {
       const { sort, type, tag, communityId } = readFeedFilters();
       const { data } = await fetchFeedPosts({ sort, type, tag, communityId, offset: 0, limit: 20 });
       if (cancelled) return;
-      const postRows = data ?? [];
-      setPosts(postRows);
-      feedOffsetRef.current = postRows.length;
-      setFeedHasMore(postRows.length >= 20);
-      const ids = Array.from(new Set<string>(postRows.map((p: any) => p.author_id)));
+      const rows = (data ?? []) as FeedItem[];
+      setFeedItems(rows);
+      feedOffsetRef.current = rows.length;
+      setFeedHasMore(rows.length >= 20);
+      const ids = Array.from(
+        new Set<string>(
+          rows.flatMap((it) =>
+            it.kind === "post" ? [it.row.author_id] : it.kind === "news" ? [it.row.posted_by] : []
+          )
+        )
+      );
       const { data: pRows } = await fetchProfilesByIds(ids);
       if (cancelled) return;
       setProfiles(new Map((pRows ?? []).map((p: any) => [p.id, p])));
@@ -155,12 +168,18 @@ function FeedPageContent() {
         offset: feedOffsetRef.current,
         limit: 20,
       });
-      const rows = data ?? [];
+      const rows = (data ?? []) as FeedItem[];
       feedOffsetRef.current += rows.length;
       setFeedHasMore(rows.length >= 20);
-      setPosts((prev) => [...prev, ...rows]);
+      setFeedItems((prev) => [...prev, ...rows]);
       if (rows.length) {
-        const authorIds = Array.from(new Set(rows.map((p: { author_id: string }) => p.author_id)));
+        const authorIds = Array.from(
+          new Set(
+            rows.flatMap((it) =>
+              it.kind === "post" ? [it.row.author_id] : it.kind === "news" ? [it.row.posted_by] : []
+            )
+          )
+        );
         const { data: pRows } = await fetchProfilesByIds(authorIds as string[]);
         setProfiles((prev) => {
           const m = new Map(prev);
@@ -174,11 +193,11 @@ function FeedPageContent() {
   };
 
   useEffect(() => {
-    if (!user || posts.length === 0) {
+    if (!user || feedItems.length === 0) {
       if (!user) setLikedPosts(new Set());
       return;
     }
-    const ids = posts.map((p) => p.id);
+    const ids = feedItems.filter((it): it is FeedItem & { kind: "post" } => it.kind === "post").map((it) => it.row.id);
     void supabase
       .from("likes")
       .select("post_id")
@@ -187,14 +206,14 @@ function FeedPageContent() {
       .then(({ data }: { data: { post_id: string }[] | null }) => {
         setLikedPosts(new Set((data ?? []).map((r) => r.post_id)));
       });
-  }, [user, posts, supabase]);
+  }, [user, feedItems, supabase]);
 
   useEffect(() => {
-    if (!user || posts.length === 0) {
+    if (!user || feedItems.length === 0) {
       if (!user) setRatedPosts({});
       return;
     }
-    const ids = posts.map((p) => p.id);
+    const ids = feedItems.filter((it): it is FeedItem & { kind: "post" } => it.kind === "post").map((it) => it.row.id);
     void supabase
       .from("ratings")
       .select("post_id,stars")
@@ -205,7 +224,7 @@ function FeedPageContent() {
         for (const r of data ?? []) next[r.post_id] = r.stars;
         setRatedPosts(next);
       });
-  }, [user, posts, supabase]);
+  }, [user, feedItems, supabase]);
 
   const handleLike = async (postId: string) => {
     const { data: auth } = await supabase.auth.getUser();
@@ -218,9 +237,17 @@ function FeedPageContent() {
       else s.delete(postId);
       return s;
     });
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === postId ? { ...p, like_count: Math.max(0, Number(p.like_count || 0) + (next ? 1 : -1)) } : p
+    setFeedItems((prev) =>
+      prev.map((it) =>
+        it.kind === "post" && it.row.id === postId
+          ? {
+              ...it,
+              row: {
+                ...it.row,
+                like_count: Math.max(0, Number(it.row.like_count || 0) + (next ? 1 : -1)),
+              },
+            }
+          : it
       )
     );
     await toggleLike(postId, auth.user.id, wasLiked);
@@ -240,11 +267,16 @@ function FeedPageContent() {
   };
 
   const handleNewPost = (newPost: any) => {
-    setPosts((prev) => [newPost, ...prev]);
+    const item: FeedItem = {
+      kind: "post",
+      created_at: newPost.created_at,
+      row: newPost,
+    };
+    setFeedItems((prev) => [item, ...prev]);
   };
 
   const handleDeletePost = (postId: string) => {
-    setPosts((prev) => prev.filter((p) => p.id !== postId));
+    setFeedItems((prev) => prev.filter((it) => (it.kind === "post" ? it.row.id !== postId : true)));
     setLikedPosts((prev) => {
       const next = new Set(prev);
       next.delete(postId);
@@ -265,10 +297,10 @@ function FeedPageContent() {
       <main className="lg:ml-64 pt-20 pb-12 px-4 min-h-screen pixel-bg">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[65%_35%] gap-4">
           <div className="space-y-4">
-            {feedLoading && posts.length === 0 ? (
+            {feedLoading && feedItems.length === 0 ? (
               <p className="text-sm text-[#888888]">Loading posts…</p>
             ) : null}
-            {!feedLoading && posts.length === 0 ? (
+            {!feedLoading && feedItems.length === 0 ? (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -299,7 +331,14 @@ function FeedPageContent() {
                 </p>
               </motion.div>
             ) : null}
-            {posts.map((post) => {
+            {feedItems.map((item) => {
+              if (item.kind === "news") {
+                const author = profiles.get(item.row.posted_by) ?? null;
+                return (
+                  <TopicFeedNewsCard key={`news-${item.row.id}`} news={item.row} author={author} />
+                );
+              }
+              const post = item.row;
               const author = profiles.get(post.author_id) as any;
               const isLiked = likedPosts.has(post.id);
               const userRating = ratedPosts[post.id] || 0;

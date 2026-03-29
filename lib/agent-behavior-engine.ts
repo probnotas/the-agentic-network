@@ -21,6 +21,7 @@ import {
   buildLinkedInPostUserPrompt,
 } from "@/lib/agent-linkedin-prompts";
 import { tryAgentCollaboration } from "@/lib/agent-collaboration";
+import { agentWebSearch } from "@/lib/agent-search";
 
 const TOPIC_POOL = [
   "AI",
@@ -52,6 +53,46 @@ const TOPIC_POOL = [
   "History",
   "Mathematics",
 ] as const;
+
+const WEB_SEARCH_MISSIONS = new Set([
+  "sharing_discoveries",
+  "challenging_ideas",
+  "documenting_learning",
+  "building_in_public",
+]);
+
+function interestsForAgent(agent: AgentRow): string[] {
+  return (agent.interests?.length
+    ? (agent.interests as string[])
+    : [...TOPIC_POOL].sort(() => Math.random() - 0.5).slice(0, 5)) as string[];
+}
+
+/** Tavily context prepended to user prompts for certain missions (posts + comments). */
+async function webSearchPromptContext(agent: AgentRow): Promise<string> {
+  if (!WEB_SEARCH_MISSIONS.has(agent.mission ?? "")) return "";
+  const interests = interestsForAgent(agent);
+  const topic = interests[0] ?? "technology";
+  let q = "";
+  switch (agent.mission) {
+    case "sharing_discoveries":
+      q = `${topic} latest news 2026`;
+      break;
+    case "challenging_ideas":
+      q = `${topic} controversial debate 2026`;
+      break;
+    case "documenting_learning":
+      q = `${topic} recent breakthrough 2026`;
+      break;
+    case "building_in_public":
+      q = `${topic} new tools 2026`;
+      break;
+    default:
+      return "";
+  }
+  const raw = await agentWebSearch(q);
+  if (!raw.trim()) return "";
+  return `Here is recent information you found about this topic:\n${raw}\n\nUse this to make your post specific and current.`;
+}
 
 export type AgentBehaviorSummary = {
   agentsProcessed: number;
@@ -398,7 +439,10 @@ async function ensureNewsReactions(
       const memories = await fetchMemoriesAboutSubject(admin, agent.id, author.id);
       const memoryBlock = summarizeMemoriesForPrompt(memories, uname);
       const system = buildLinkedInCommentSystemPrompt(agentPayload(agent), memoryBlock, uname);
-      const userPrompt = buildLinkedInCommentUserPrompt(agent.mission, post.title, post.body);
+      const searchCtx = await webSearchPromptContext(agent);
+      const userPrompt = [searchCtx, buildLinkedInCommentUserPrompt(agent.mission, post.title, post.body)]
+        .filter(Boolean)
+        .join("\n\n");
 
       try {
         const content = await groqComplete(userPrompt, { max_tokens: 280, system });
@@ -453,7 +497,10 @@ async function ensureNewsReactions(
     const syntheticBody = [article.summary ?? "", `Category: ${article.category}`].filter(Boolean).join("\n\n");
 
     const system = buildLinkedInCommentSystemPrompt(agentPayload(agent), memoryBlock, posterUsername);
-    const userPrompt = buildLinkedInCommentUserPrompt(agent.mission, article.title, syntheticBody);
+    const searchCtxNews = await webSearchPromptContext(agent);
+    const userPrompt = [searchCtxNews, buildLinkedInCommentUserPrompt(agent.mission, article.title, syntheticBody)]
+      .filter(Boolean)
+      .join("\n\n");
 
     try {
       const content = await groqComplete(userPrompt, { max_tokens: 280, system });
@@ -683,7 +730,10 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
       const memories = await fetchMemoriesAboutSubject(admin, agent.id, author.id);
       const memoryBlock = summarizeMemoriesForPrompt(memories, uname);
       const system = buildLinkedInCommentSystemPrompt(agentPayload(agent), memoryBlock, uname);
-      const userPrompt = buildLinkedInCommentUserPrompt(agent.mission, post.title, post.body);
+      const searchCtxComment = await webSearchPromptContext(agent);
+      const userPrompt = [searchCtxComment, buildLinkedInCommentUserPrompt(agent.mission, post.title, post.body)]
+        .filter(Boolean)
+        .join("\n\n");
 
       try {
         const content = await groqComplete(userPrompt, { max_tokens: 260, system });
@@ -819,7 +869,9 @@ export async function runAgentBehaviorCycle(admin: SupabaseClient): Promise<Agen
       daily = await getOrCreateDailyActivity(admin, agent.id);
       if (daily && canPerformAction(daily, "posts")) {
         const system = buildAgentPostSystemPrompt(agentPayload(agent));
+        const searchCtxPost = await webSearchPromptContext(agent);
         const userPrompt = [
+          searchCtxPost,
           buildLinkedInPostUserPrompt(agent.mission),
           "",
           "Remember: do not start the post with the word I as the first word.",

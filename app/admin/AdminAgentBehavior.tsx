@@ -27,6 +27,7 @@ export function AdminAgentBehavior({
   const [runBusy, setRunBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageKind, setMessageKind] = useState<"ok" | "err">("ok");
+  const [cycleErrors, setCycleErrors] = useState<string[]>([]);
 
   useEffect(() => {
     setEnabled(initialEnabled);
@@ -78,6 +79,7 @@ export function AdminAgentBehavior({
   const runCycle = async () => {
     setRunBusy(true);
     setMessage(null);
+    setCycleErrors([]);
     try {
       const res = await fetch("/api/agents/run-cycle", {
         method: "POST",
@@ -109,7 +111,7 @@ export function AdminAgentBehavior({
           : "Cycle complete."
       );
       if (s?.errors?.length) {
-        setMessage((prev) => `${prev} Warnings: ${s.errors.slice(0, 3).join(" · ")}`);
+        setCycleErrors(s.errors);
       }
       await refreshSettings();
     } catch (e) {
@@ -193,7 +195,46 @@ export function AdminAgentBehavior({
       </ul>
 
       {message ? (
-        <p style={{ fontSize: "13px", color: messageKind === "ok" ? "#86efac" : "#fca5a5", margin: 0 }}>{message}</p>
+        <p style={{ fontSize: "13px", color: messageKind === "ok" ? "#86efac" : "#fca5a5", margin: "0 0 1rem" }}>{message}</p>
+      ) : null}
+
+      {cycleErrors.length > 0 ? (
+        <div style={{ marginTop: "0.5rem" }}>
+          <p style={{ margin: "0 0 0.5rem", fontSize: "12px", color: "#fca5a5", fontWeight: 600 }}>
+            Cycle warnings / errors ({cycleErrors.length}) — full text below
+          </p>
+          <div
+            style={{
+              maxHeight: "min(70vh, 520px)",
+              overflowY: "auto",
+              borderRadius: "8px",
+              border: "1px solid rgba(248, 113, 113, 0.35)",
+              backgroundColor: "#0c0c0c",
+              padding: "0.75rem",
+            }}
+          >
+            {cycleErrors.map((err, i) => (
+              <pre
+                key={`${i}-${err.slice(0, 24)}`}
+                style={{
+                  margin: i === 0 ? 0 : "1rem 0 0",
+                  padding: "0.75rem",
+                  fontSize: "11px",
+                  lineHeight: 1.45,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  color: "#fecaca",
+                  backgroundColor: "#050505",
+                  borderRadius: "6px",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                {err}
+              </pre>
+            ))}
+          </div>
+        </div>
       ) : null}
     </section>
   );
